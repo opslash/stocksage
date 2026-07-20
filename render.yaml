@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: stocksage
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: GNEWS_API_KEY
+        sync: false
+      - key: DEBUG
+        value: "false"
+      - key: CACHE_TTL_MINUTES
+        value: "75"
+    healthCheckPath: /api/health
+    autoDeploy: true
