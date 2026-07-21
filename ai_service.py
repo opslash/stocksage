@@ -65,7 +65,7 @@ def summarize_news(articles: list[dict]) -> dict:
         """
 
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -111,7 +111,7 @@ def ask_copilot(ticker: str, query: str, context: dict) -> str:
         """
 
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash",
             contents=user_prompt,
             config=types.GenerateContentConfig(
                 system_instruction=sys_prompt,

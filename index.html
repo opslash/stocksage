@@ -1,614 +1,1453 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>StockSage — Premium Stock Analysis &amp; Market Intelligence</title>
-  <meta name="description" content="Premium Stock Analysis &amp; Market Intelligence Platform with intrinsic value calculator and 8-pillar checklist">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-  <!-- Chart.js (shares chart) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-  <!-- TradingView Lightweight Charts (price/SMA chart) -->
-  <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
-  <!-- html2pdf (PDF export) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <link rel="stylesheet" href="static/css/styles.css">
-</head>
-<body>
-
-  <header>
-    <div class="container header-inner">
-
-      <!-- Left: Branding -->
-      <div class="header-left">
-        <a href="#" class="logo" onclick="navigateTo('home'); return false;" style="text-decoration:none;">📈 StockSage</a>
-      </div>
-
-      <!-- Center: Nav links -->
-      <div class="header-right" style="flex: 1; justify-content: center;">
-        <nav class="nav-links" aria-label="Main navigation">
-          <button class="nav-link active" id="nav-home" onclick="navigateTo('home')">Home</button>
-          <button class="nav-link" id="nav-watchlist" onclick="navigateTo('watchlist')">Watchlist</button>
-          <button class="nav-link" id="nav-stock-analysis" onclick="navigateTo('stock-analysis')">Stock Analysis</button>
-          <button class="nav-link" id="nav-valuation" onclick="navigateTo('valuation')">Valuation Engine</button>
-          <button class="nav-link" id="nav-company-news" onclick="navigateTo('company-news')">Company News</button>
-          <button class="nav-link" id="nav-news" onclick="navigateTo('news')">Macro News</button>
-          <a href="#screener" class="nav-link" id="nav-screener" onclick="navigateTo('screener'); return false;">Stock Screener</a>
-        </nav>
-      </div>
-      
-      <!-- Right: Status -->
-      <div class="header-status" style="display: flex; align-items: center; gap: 15px;">
-        <div id="authContainer">
-           <button id="btnOpenAuth" class="btn btn-sm btn-outline" onclick="openAuthModal()">Sign In</button>
-           <div id="userProfile" style="display:none; position:relative;">
-             <button class="btn btn-sm" id="btnProfile" onclick="toggleProfileMenu()">👤 <span id="profileName"></span></button>
-             <div id="profileMenu" class="dropdown-content" style="display:none; position:absolute; right:0; top:35px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:6px; padding:8px; min-width:120px; z-index:100;">
-               <a href="#" onclick="logoutUser(); return false;" style="color:var(--text-color); text-decoration:none; display:block; padding:4px 8px;">Logout</a>
-             </div>
-           </div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StockSage — Premium Stock Analysis &amp; Market Intelligence</title>
+    <meta
+      name="description"
+      content="Premium Stock Analysis &amp; Market Intelligence Platform with intrinsic value calculator and 8-pillar checklist"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Chart.js (shares chart) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <!-- TradingView Lightweight Charts (price/SMA chart) -->
+    <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- html2pdf (PDF export) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link rel="stylesheet" href="static/css/styles.css" />
+  </head>
+  <body>
+    <header>
+      <div class="container header-inner">
+        <!-- Left: Branding -->
+        <div class="header-left">
+          <a
+            href="#"
+            class="logo"
+            onclick="
+              navigateTo('home');
+              return false;
+            "
+            style="text-decoration: none"
+            >📈 StockSage</a
+          >
         </div>
-        <div class="status-area">
-          <div id="statusDot" class="status-dot"></div>
-          <span id="statusText">No Data</span>
+
+        <!-- Center: Nav links -->
+        <div class="header-right" style="flex: 1; justify-content: center">
+          <nav class="nav-links" aria-label="Main navigation">
+            <button
+              class="nav-link active"
+              id="nav-home"
+              onclick="navigateTo('home')"
+            >
+              Home
+            </button>
+            <button
+              class="nav-link"
+              id="nav-watchlist"
+              onclick="navigateTo('watchlist')"
+            >
+              Watchlist
+            </button>
+            <button
+              class="nav-link"
+              id="nav-stock-analysis"
+              onclick="navigateTo('stock-analysis')"
+            >
+              Stock Analysis
+            </button>
+            <button
+              class="nav-link"
+              id="nav-valuation"
+              onclick="navigateTo('valuation')"
+            >
+              Valuation Engine
+            </button>
+            <button
+              class="nav-link"
+              id="nav-company-news"
+              onclick="navigateTo('company-news')"
+            >
+              Company News
+            </button>
+            <button class="nav-link" id="nav-news" onclick="navigateTo('news')">
+              Macro News
+            </button>
+            <a
+              href="#screener"
+              class="nav-link"
+              id="nav-screener"
+              onclick="
+                navigateTo('screener');
+                return false;
+              "
+              >Stock Screener</a
+            >
+          </nav>
         </div>
-      </div>
 
-    </div>
-  </header>
-
-  <main>
-    <div class="container">
-
-      <!-- PAGE: HOME -->
-      <div id="page-home" class="page active">
-        <div class="welcome-state">
-          <div class="welcome-icon">📊</div>
-          <h1>Stock Analysis, Simplified</h1>
-          <p>Search any ticker for live quotes, historical financials, value checklist, and intrinsic value estimates.</p>
-          
-          <div style="width: 100%; max-width: 500px; margin: 0 auto 36px;">
-            <form id="searchForm" style="position: relative;">
-              <div class="search-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/></svg>
-              </div>
-              <input type="text" id="searchInput" class="search-input" style="padding: 14px 50px 14px 44px; font-size: 1.05rem;"
-                placeholder="Enter Stock Ticker... e.g., AAPL, NVDA"
-                autocomplete="off" autocapitalize="characters" spellcheck="false">
-              <button type="submit" class="search-btn" style="width: 40px; height: 40px; right: 8px;" aria-label="Search">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/></svg>
+        <!-- Right: Status -->
+        <div
+          class="header-status"
+          style="display: flex; align-items: center; gap: 15px"
+        >
+          <div id="authContainer">
+            <button
+              id="btnOpenAuth"
+              class="btn btn-sm btn-outline"
+              onclick="openAuthModal()"
+            >
+              Sign In
+            </button>
+            <div id="userProfile" style="display: none; position: relative">
+              <button
+                class="btn btn-sm"
+                id="btnProfile"
+                onclick="toggleProfileMenu()"
+              >
+                👤 <span id="profileName"></span>
               </button>
-              <div id="searchAutocomplete" class="autocomplete-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--card-bg); border:1px solid var(--border-color); border-radius:6px; margin-top:4px; z-index:1000; max-height:300px; overflow-y:auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"></div>
-            </form>
+              <div
+                id="profileMenu"
+                class="dropdown-content"
+                style="
+                  display: none;
+                  position: absolute;
+                  right: 0;
+                  top: 45px;
+                  background: var(--card-bg);
+                  border: 1px solid var(--border-bright);
+                  border-radius: 12px;
+                  padding: 8px;
+                  min-width: 160px;
+                  z-index: 100;
+                  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+                  backdrop-filter: blur(10px);
+                "
+              >
+                <div style="padding: 8px; border-bottom: 1px solid var(--border-color); margin-bottom: 4px;">
+                  <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Signed in as</div>
+                  <div style="font-weight: 600; font-size: 0.9rem; color: var(--text-main); overflow: hidden; text-overflow: ellipsis;" id="profileNameDisplay">User</div>
+                </div>
+                <a
+                  href="#"
+                  onclick="
+                    logoutUser();
+                    return false;
+                  "
+                  style="
+                    color: #ef4444;
+                    text-decoration: none;
+                    display: flex;
+                    align-items: center;
+                    padding: 10px 12px;
+                    border-radius: 6px;
+                    transition: background 0.2s;
+                    font-weight: 500;
+                  "
+                  onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'"
+                  onmouseout="this.style.background='transparent'"
+                  >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                  Logout
+                </a>
+              </div>
+            </div>
           </div>
-
-          <div class="chips">
-            <div class="chip" onclick="searchTicker('AAPL')">AAPL</div>
-            <div class="chip" onclick="searchTicker('NVDA')">NVDA</div>
-            <div class="chip" onclick="searchTicker('MSFT')">MSFT</div>
-            <div class="chip" onclick="searchTicker('GOOGL')">GOOGL</div>
-            <div class="chip" onclick="searchTicker('TSLA')">TSLA</div>
-            <div class="chip" onclick="searchTicker('META')">META</div>
-          </div>
-
-          <div class="snapshot-strip" id="marketIndices">
-            <div class="snapshot-card">
-              <div class="snapshot-label">S&amp;P 500</div>
-              <div class="snapshot-val text-muted">Loading...</div>
-            </div>
-            <div class="snapshot-card">
-              <div class="snapshot-label">NASDAQ</div>
-              <div class="snapshot-val text-muted">Loading...</div>
-            </div>
-            <div class="snapshot-card">
-              <div class="snapshot-label">DOW JONES</div>
-              <div class="snapshot-val text-muted">Loading...</div>
-            </div>
-            <div class="snapshot-card">
-              <div class="snapshot-label">VIX (Vol)</div>
-              <div class="snapshot-val text-muted">Loading...</div>
-            </div>
+          <div class="status-area">
+            <div id="statusDot" class="status-dot"></div>
+            <span id="statusText">No Data</span>
           </div>
         </div>
       </div>
+    </header>
 
-      <!-- PAGE: WATCHLIST -->
-      <div id="page-watchlist" class="page">
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">My Watchlist</h2>
-              <div class="card-subtitle">Live quotes for your saved tickers</div>
+    <main>
+      <div class="container">
+        <!-- PAGE: HOME -->
+        <div id="page-home" class="page active">
+          <div class="welcome-state">
+            <div class="welcome-icon">📊</div>
+            <h1>Stock Analysis, Simplified</h1>
+            <p>
+              Search any ticker for live quotes, historical financials, value
+              checklist, and intrinsic value estimates.
+            </p>
+
+            <div style="width: 100%; max-width: 500px; margin: 0 auto 36px">
+              <form id="searchForm" style="position: relative">
+                <div class="search-icon">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
+                  </svg>
+                </div>
+                <input
+                  type="text"
+                  id="searchInput"
+                  class="search-input"
+                  style="padding: 14px 50px 14px 44px; font-size: 1.05rem"
+                  placeholder="Enter Stock Ticker... e.g., AAPL, NVDA"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                />
+                <button
+                  type="submit"
+                  class="search-btn"
+                  style="width: 40px; height: 40px; right: 8px"
+                  aria-label="Search"
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="3"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
+                  </svg>
+                </button>
+                <div
+                  id="searchAutocomplete"
+                  class="autocomplete-dropdown"
+                  style="
+                    display: none;
+                    position: absolute;
+                    top: 100%;
+                    left: 0;
+                    right: 0;
+                    background: var(--card-bg);
+                    border: 1px solid var(--border-color);
+                    border-radius: 6px;
+                    margin-top: 4px;
+                    z-index: 1000;
+                    max-height: 300px;
+                    overflow-y: auto;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                  "
+                ></div>
+              </form>
+            </div>
+
+            <div class="chips">
+              <div class="chip" onclick="searchTicker('AAPL')">AAPL</div>
+              <div class="chip" onclick="searchTicker('NVDA')">NVDA</div>
+              <div class="chip" onclick="searchTicker('MSFT')">MSFT</div>
+              <div class="chip" onclick="searchTicker('GOOGL')">GOOGL</div>
+              <div class="chip" onclick="searchTicker('TSLA')">TSLA</div>
+              <div class="chip" onclick="searchTicker('META')">META</div>
+            </div>
+
+            <div class="snapshot-strip" id="marketIndices">
+              <div class="snapshot-card">
+                <div class="snapshot-label">S&amp;P 500</div>
+                <div class="snapshot-val text-muted">Loading...</div>
+              </div>
+              <div class="snapshot-card">
+                <div class="snapshot-label">NASDAQ</div>
+                <div class="snapshot-val text-muted">Loading...</div>
+              </div>
+              <div class="snapshot-card">
+                <div class="snapshot-label">DOW JONES</div>
+                <div class="snapshot-val text-muted">Loading...</div>
+              </div>
+              <div class="snapshot-card">
+                <div class="snapshot-label">VIX (Vol)</div>
+                <div class="snapshot-val text-muted">Loading...</div>
+              </div>
             </div>
           </div>
-          <div id="watchlistGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; padding: 0 16px 16px;">
+        </div>
+
+        <!-- PAGE: WATCHLIST -->
+        <div id="page-watchlist" class="page">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">My Watchlist</h2>
+                <div class="card-subtitle">
+                  Live quotes for your saved tickers
+                </div>
+              </div>
+            </div>
+            <div
+              id="watchlistGrid"
+              style="
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 16px;
+                padding: 0 16px 16px;
+              "
+            ></div>
           </div>
         </div>
-      </div>
 
-      <!-- PAGE: STOCK ANALYSIS -->
-      <div id="page-stock-analysis" class="page">
-        <!-- AI Stock Snapshot -->
-        <div id="ai-stock-snapshot" style="display:none;"></div>
-        <!-- Hero -->
-        <div class="card hero-card">
-          <div class="pillar-score-badge" id="heroPillarBadge">0/8 ✓</div>
-          <div class="hero-inner">
-            <div class="hero-left">
-              <div class="hero-title-row">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                  <h1 id="heroName" style="margin: 0;">Company Name</h1>
-                  <button id="heroWatchlistBtn" type="button" style="background:none; border:none; color:var(--text-muted); cursor:pointer; padding: 4px;" onclick="toggleWatchlist(AppState.currentTicker)" title="Toggle Watchlist">
-                    <svg id="heroWatchlistIcon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+        <!-- PAGE: STOCK ANALYSIS -->
+        <div id="page-stock-analysis" class="page">
+          <!-- AI Stock Snapshot -->
+          <div id="ai-stock-snapshot" style="display: none"></div>
+          <!-- Hero -->
+          <div class="card hero-card">
+            <div class="pillar-score-badge" id="heroPillarBadge">0/8 ✓</div>
+            <div class="hero-inner">
+              <div class="hero-left">
+                <div class="hero-title-row">
+                  <div style="display: flex; align-items: center; gap: 12px">
+                    <h1 id="heroName" style="margin: 0">Company Name</h1>
+                    <button
+                      id="heroWatchlistBtn"
+                      type="button"
+                      style="
+                        background: none;
+                        border: none;
+                        color: var(--text-muted);
+                        cursor: pointer;
+                        padding: 4px;
+                      "
+                      onclick="toggleWatchlist(AppState.currentTicker)"
+                      title="Toggle Watchlist"
+                    >
+                      <svg
+                        id="heroWatchlistIcon"
+                        width="22"
+                        height="22"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <polygon
+                          points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+                        ></polygon>
+                      </svg>
+                    </button>
+                  </div>
+                  <!-- PDF Export Button -->
+                  <button
+                    id="export-pdf-btn"
+                    class="export-pdf-btn"
+                    type="button"
+                    onclick="exportPDF()"
+                    title="Export a PDF report"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    📄 Export PDF
                   </button>
                 </div>
-                <!-- PDF Export Button -->
-                <button id="export-pdf-btn" class="export-pdf-btn" type="button" onclick="exportPDF()" title="Export a PDF report">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  📄 Export PDF
-                </button>
+                <div
+                  class="badges"
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-top: 8px;
+                  "
+                >
+                  <span class="badge badge-ticker" id="heroTicker">TICK</span>
+                  <span class="badge badge-sector" id="heroSector">Sector</span>
+                  <span class="badge badge-industry" id="heroIndustry"
+                    >Industry</span
+                  >
+                </div>
+                <div
+                  id="resolvedTickerBadge"
+                  style="
+                    display: none;
+                    font-size: 0.75rem;
+                    color: var(--text-muted);
+                    margin-top: 10px;
+                    padding: 4px 10px;
+                    background: rgba(255, 255, 255, 0.05);
+                    border-radius: 6px;
+                    border: 1px solid var(--border);
+                    width: fit-content;
+                    align-items: center;
+                    gap: 6px;
+                  "
+                ></div>
               </div>
-              <div class="badges" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-                <span class="badge badge-ticker" id="heroTicker">TICK</span>
-                <span class="badge badge-sector" id="heroSector">Sector</span>
-                <span class="badge badge-industry" id="heroIndustry">Industry</span>
+              <div class="hero-center">
+                <div class="price-display mono" id="heroPrice">$0.00</div>
+                <div class="change-badge pos" id="heroChange">
+                  +0.00 (+0.00%)
+                </div>
               </div>
-              <div id="resolvedTickerBadge" style="display:none; font-size: 0.75rem; color: var(--text-muted); margin-top: 10px; padding: 4px 10px; background: rgba(255,255,255,0.05); border-radius: 6px; border: 1px solid var(--border); width: fit-content; align-items: center; gap: 6px;"></div>
-            </div>
-            <div class="hero-center">
-              <div class="price-display mono" id="heroPrice">$0.00</div>
-              <div class="change-badge pos" id="heroChange">+0.00 (+0.00%)</div>
-            </div>
-            <div class="hero-right">
-              <div class="mini-stat"><div class="mini-stat-label">Market Cap</div><div class="mini-stat-value mono" id="heroMktCap">—</div></div>
-              <div class="mini-stat"><div class="mini-stat-label">Volume</div><div class="mini-stat-value mono" id="heroVol">—</div></div>
-              <div class="mini-stat"><div class="mini-stat-label">52W High</div><div class="mini-stat-value mono" id="hero52H">—</div></div>
-              <div class="mini-stat"><div class="mini-stat-label">All-Time High</div><div class="mini-stat-value mono" id="heroATH">—</div></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Analyst Targets Widget -->
-        <div class="card analyst-targets-card" id="analystTargetsCard" style="display:none; margin-top: 24px;">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Analyst Targets & Consensus</h2>
-              <div class="card-subtitle">Wall Street 12-month price targets</div>
-            </div>
-            <div id="analyst-badge" class="badge" style="font-size: 14px; padding: 6px 12px; background: var(--surface2); color: var(--text-muted);">Awaiting Data</div>
-          </div>
-          
-          <div style="padding: 24px; position: relative; margin-top: 16px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-muted);">
-              <span id="target-low-label">Low</span>
-              <span id="target-avg-label">Average</span>
-              <span id="target-high-label">High</span>
-            </div>
-            
-            <!-- The gauge bar -->
-            <div style="height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--danger) 0%, var(--warning) 50%, var(--success) 100%); position: relative;">
-              <!-- Current Price Marker -->
-              <div id="target-current-marker" style="position: absolute; top: -8px; left: 50%; width: 4px; height: 28px; background: var(--text-main); border: 2px solid var(--surface); border-radius: 4px; transform: translateX(-50%); box-shadow: 0 0 8px rgba(0,0,0,0.5); z-index: 2;"></div>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; margin-top: 12px; font-family: var(--font-mono); font-size: 1.1rem; color: var(--text-main);">
-              <span id="target-low-val">$0.00</span>
-              <span id="target-avg-val" style="font-weight:bold;">$0.00</span>
-              <span id="target-high-val">$0.00</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Price Chart (TradingView Lightweight Charts) -->
-        <div class="card" id="priceChartCard">
-          <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
-            <div>
-              <h2 class="card-title">Price Chart</h2>
-              <div class="card-subtitle" id="chartSubtitle">1-Year Daily · Candlestick · SMA-50 · SMA-200 · Volume</div>
-            </div>
-            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-              <div class="indicator-bar" style="display: flex; gap: 6px;">
-                <button class="indicator-btn active" id="toggle-sma50" onclick="toggleIndicator('sma50')">SMA 50</button>
-                <button class="indicator-btn active" id="toggle-sma200" onclick="toggleIndicator('sma200')">SMA 200</button>
-                <button class="indicator-btn active" id="toggle-rsi" onclick="toggleIndicator('rsi')">RSI</button>
-              </div>
-              <div class="timeframe-bar">
-                <button class="timeframe-btn" id="tf-1D" onclick="fetchChartData('1d', '5m')">1D</button>
-                <button class="timeframe-btn" id="tf-1W" onclick="fetchChartData('5d', '15m')">1W</button>
-                <button class="timeframe-btn" id="tf-1M" onclick="fetchChartData('1mo', '1d')">1M</button>
-                <button class="timeframe-btn" id="tf-6M" onclick="fetchChartData('6mo', '1d')">6M</button>
-                <button class="timeframe-btn active" id="tf-1Y" onclick="fetchChartData('1y', '1d')">1Y</button>
-                <button class="timeframe-btn" id="tf-5Y" onclick="fetchChartData('5y', '1wk')">5Y</button>
-              </div>
-            </div>
-          </div>
-          <div id="stockPriceChart" class="lw-chart-container"></div>
-        </div>
-
-        <!-- 2-Col: Checklist + Metrics -->
-        <div class="dashboard-grid">
-          <div class="card">
-            <div class="card-header">
-              <div>
-                <h2 class="card-title">Value Investor Checklist</h2>
-                <div class="card-subtitle">8-Pillar Quality Assessment</div>
-              </div>
-            </div>
-            <div class="score-chart-container">
-              <div class="score-ring-wrapper">
-                <svg class="score-svg" viewBox="0 0 130 130">
-                  <circle class="score-bg" cx="65" cy="65" r="55"></circle>
-                  <circle class="score-progress" id="scoreCircle" cx="65" cy="65" r="55"></circle>
-                </svg>
-                <div class="score-center">
-                  <div class="score-number mono" id="scoreText">0</div>
-                  <div class="score-denom text-muted">/ 8</div>
+              <div class="hero-right">
+                <div class="mini-stat">
+                  <div class="mini-stat-label">Market Cap</div>
+                  <div class="mini-stat-value mono" id="heroMktCap">—</div>
+                </div>
+                <div class="mini-stat">
+                  <div class="mini-stat-label">Volume</div>
+                  <div class="mini-stat-value mono" id="heroVol">—</div>
+                </div>
+                <div class="mini-stat">
+                  <div class="mini-stat-label">52W High</div>
+                  <div class="mini-stat-value mono" id="hero52H">—</div>
+                </div>
+                <div class="mini-stat">
+                  <div class="mini-stat-label">All-Time High</div>
+                  <div class="mini-stat-value mono" id="heroATH">—</div>
                 </div>
               </div>
             </div>
-            <div class="checklist-items" id="checklistContainer"></div>
           </div>
 
-          <div class="card">
+          <!-- Analyst Targets Widget -->
+          <div
+            class="card analyst-targets-card"
+            id="analystTargetsCard"
+            style="display: none; margin-top: 24px"
+          >
             <div class="card-header">
               <div>
-                <h2 class="card-title">Key Metrics</h2>
-                <div class="card-subtitle">TTM &amp; Multi-Year Averages</div>
-              </div>
-            </div>
-            <div class="metrics-grid" id="metricsContainer"></div>
-          </div>
-        </div>
-
-        <!-- Peer Comparison Matrix -->
-        <div class="card" id="peersCard" style="display:none;">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Peer Comparison Matrix</h2>
-              <div class="card-subtitle">Current stock (highlighted) vs. sector peers · Median row at bottom</div>
-            </div>
-          </div>
-          <div id="compsMatrix"></div>
-        </div>
-
-        <!-- Historical Table -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Historical Financial Statement</h2>
-              <div class="card-subtitle" id="finDataYearsLabel">Annual data</div>
-            </div>
-            <button class="btn" onclick="downloadCSV()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Export CSV
-            </button>
-          </div>
-          <div class="table-container">
-            <table id="financialTable">
-              <thead><tr id="finTableHead"></tr></thead>
-              <tbody id="finTableBody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Shares Chart -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Shares Outstanding History</h2>
-              <div class="card-subtitle">🟢 Green = Buybacks (declining) &nbsp; 🔴 Red = Dilution (increasing)</div>
-            </div>
-          </div>
-          <div class="chart-container"><canvas id="sharesChart"></canvas></div>
-          <div class="table-container" style="margin-top:16px;">
-            <table><thead><tr id="sharesTableHead"></tr></thead><tbody id="sharesTableBody"></tbody></table>
-          </div>
-        </div>
-
-
-        <!-- AI Copilot Chat -->
-        <div class="card ai-card" id="ai-chat-widget" style="margin-top: 24px; display: none;">
-          <div class="ai-card-inner">
-            <div class="ai-header">
-              <div class="ai-title">✨ AI Copilot</div>
-            </div>
-            
-            <div class="chips" style="margin-bottom: 12px; font-size: 0.85rem;">
-              <div class="chip" onclick="askAiCopilot('What are the biggest debt risks?')">Debt Risks</div>
-              <div class="chip" onclick="askAiCopilot('Summarize recent earnings')">Recent Earnings</div>
-              <div class="chip" onclick="askAiCopilot('Why is the stock moving?')">Why is the stock moving?</div>
-            </div>
-            
-            <div class="ai-chat-box">
-              <div class="ai-chat-messages" id="aiChatMessages">
-                <!-- Chat messages go here -->
-                <div style="color: var(--text-muted); font-style: italic;">Ask a question to begin...</div>
-              </div>
-              <div class="ai-chat-input-area">
-                <input type="text" id="aiChatInput" class="search-input" placeholder="Ask AI about this stock..." onkeypress="if(event.key === 'Enter') askAiCopilot(this.value)">
-                <button class="search-btn" onclick="askAiCopilot(document.getElementById('aiChatInput').value)">Send</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- PAGE: COMPANY NEWS -->
-      <div id="page-company-news" class="page">
-        <div id="ai-news-summary-company" style="display:none;"></div>
-        <div class="card" id="stockNewsCard" style="display:none;">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Recent Company News</h2>
-              <div class="card-subtitle">Aggregated from multiple sources</div>
-            </div>
-          </div>
-          <div class="news-accordion" id="stockNewsContainer" style="padding: 0 16px 16px;"></div>
-        </div>
-        <div id="companyNewsEmptyState" style="padding: 40px 24px; text-align: center; color: var(--text-muted);">
-          Please load a stock to view its recent news.
-        </div>
-      </div>
-
-      <!-- PAGE: SCREENER -->
-      <div id="page-screener" class="page">
-        <div class="card" style="margin-bottom: 24px;">
-          <h2 class="card-title">Stock Screener</h2>
-          
-          <div class="chips" style="margin-top: 16px; margin-bottom: 8px;">
-            <div class="chip" onclick="applyScreenerPreset('deep_value')">💎 Deep Value</div>
-            <div class="chip" onclick="applyScreenerPreset('high_growth')">🚀 High-Growth Tech</div>
-            <div class="chip" onclick="applyScreenerPreset('quality_compounders')">👑 Quality Compounders</div>
-            <div class="chip" onclick="applyScreenerPreset('clear')">Clear Filters</div>
-          </div>
-
-          <div style="display: flex; gap: 16px; margin-top: 16px; flex-wrap: wrap;" id="screener-controls">
-            <!-- Filter inputs -->
-            <div style="flex: 1; min-width: 150px;">
-              <label style="display:block; margin-bottom:4px; font-size: 0.85rem; color: var(--text-muted)">Min Market Cap ($)</label>
-              <input type="number" id="scr-min-cap" value="1000000000" class="search-input" style="width: 100%; padding: 8px;">
-            </div>
-            <div style="flex: 1; min-width: 150px;">
-              <label style="display:block; margin-bottom:4px; font-size: 0.85rem; color: var(--text-muted)">Max P/E Ratio</label>
-              <input type="number" id="scr-max-pe" value="50" class="search-input" style="width: 100%; padding: 8px;">
-            </div>
-            <div style="flex: 1; min-width: 150px;">
-              <label style="display:block; margin-bottom:4px; font-size: 0.85rem; color: var(--text-muted)">Min ROIC (%)</label>
-              <input type="number" id="scr-min-roic" class="search-input" style="width: 100%; padding: 8px;" placeholder="Optional">
-            </div>
-            <div style="flex: 1; min-width: 150px;">
-              <label style="display:block; margin-bottom:4px; font-size: 0.85rem; color: var(--text-muted)">Min Rev Growth (%)</label>
-              <input type="number" id="scr-min-rev" class="search-input" style="width: 100%; padding: 8px;" placeholder="Optional">
-            </div>
-            <div style="flex: 1; min-width: 150px;">
-              <label style="display:block; margin-bottom:4px; font-size: 0.85rem; color: var(--text-muted)">Sector</label>
-              <select id="scr-sector" class="search-input" style="width: 100%; padding: 8px; background: rgba(255,255,255,0.05); color: #fff;">
-                <option value="">Any</option>
-                <option value="Technology Services">Technology Services</option>
-                <option value="Electronic Technology">Electronic Technology</option>
-                <option value="Health Technology">Health Technology</option>
-                <option value="Finance">Finance</option>
-                <option value="Consumer Non-Durables">Consumer Non-Durables</option>
-                <option value="Consumer Durables">Consumer Durables</option>
-                <option value="Energy Minerals">Energy Minerals</option>
-                <option value="Commercial Services">Commercial Services</option>
-              </select>
-            </div>
-            <div style="display: flex; align-items: flex-end;">
-              <button class="search-btn" style="padding: 8px 16px; width: auto; font-weight: bold; position: static;" onclick="fetchScreenerData()">Scan</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel">
-          <div class="table-responsive">
-            <table class="table data-table" id="screenerTable">
-              <thead>
-                <tr>
-                  <th onclick="sortScreener('ticker')" style="cursor:pointer;">Ticker ↕</th>
-                  <th onclick="sortScreener('name')" style="cursor:pointer;">Company ↕</th>
-                  <th onclick="sortScreener('sector')" style="cursor:pointer;">Sector ↕</th>
-                  <th onclick="sortScreener('price')" style="cursor:pointer; text-align:right;">Price ↕</th>
-                  <th onclick="sortScreener('market_cap')" style="cursor:pointer; text-align:right;">Market Cap ↕</th>
-                  <th onclick="sortScreener('pe')" style="cursor:pointer; text-align:right;">P/E ↕</th>
-                  <th onclick="sortScreener('roic')" style="cursor:pointer; text-align:right;">ROIC ↕</th>
-                  <th onclick="sortScreener('rev_growth')" style="cursor:pointer; text-align:right;">Rev Growth (YoY) ↕</th>
-                </tr>
-              </thead>
-              <tbody id="screenerResults">
-                <tr><td colspan="8" class="text-center text-muted" style="padding:40px;">Select filters and click "Run Screen" to find stocks.</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div id="screenerPagination" style="display:none; justify-content:space-between; align-items:center; margin-top:15px; padding:10px 0;">
-            <button class="btn btn-sm btn-outline" id="btnScreenerPrev" onclick="screenerPrevPage()">Previous</button>
-            <span id="screenerPageInfo" class="text-muted" style="font-size:0.9em;">Page 1 of 1</span>
-            <button class="btn btn-sm btn-outline" id="btnScreenerNext" onclick="screenerNextPage()">Next</button>
-          </div>
-        </div>
-      </div> <!-- END PAGE: SCREENER -->
-
-      <!-- PAGE: MACRO NEWS -->
-      <div id="page-news" class="page">
-        <div id="ai-news-summary-macro" style="display:none;"></div>
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Macro News Terminal</h2>
-              <div class="card-subtitle">High-Impact Market & Economic News Stream</div>
-            </div>
-          </div>
-          
-          <div class="news-filters">
-            <div class="chip" id="chip-all" onclick="filterNews('all')" style="background:var(--primary-dim); border-color:var(--primary); color:var(--primary);">All Market News</div>
-            <div class="chip" id="chip-fed" onclick="filterNews('fed')">Federal Reserve / Interest Rates</div>
-            <div class="chip" id="chip-bls" onclick="filterNews('bls')">BLS Reports (CPI / Inflation)</div>
-          </div>
-
-          <div class="news-accordion" id="newsContainer">
-            <div style="padding: 24px; text-align: center; color: var(--text-muted);">Load a stock to view news stream.</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- PAGE: VALUATION -->
-      <div id="page-valuation" class="page">
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Intrinsic Value Calculator</h2>
-              <div class="card-subtitle">Discounted earnings model — edit any cell to recalculate instantly</div>
-            </div>
-            <button class="btn btn-primary" onclick="resetValuationDefaults()">↺ Reset Defaults</button>
-          </div>
-
-          <div class="val-controls">
-            <div class="control-group">
-              <label class="control-label" for="valYears">Projection Period</label>
-              <select id="valYears" onchange="calculateValuation()">
-                <option value="5">5 Years</option>
-                <option value="10" selected>10 Years</option>
-              </select>
-            </div>
-            <span class="badge badge-sector" id="valDataYears">— Years Data</span>
-            <span style="margin-left:auto;font-size:0.78rem;color:var(--text-muted);">💡 All % fields in percentage points (e.g. 15 = 15%)</span>
-          </div>
-
-          <div class="benchmarks-table">
-            <div class="section-label">Historical Performance Benchmarks</div>
-            <div class="table-container">
-              <table>
-                <thead><tr><th>Metric</th><th>1-Year</th><th>5-Year Avg</th><th>10-Year Avg</th></tr></thead>
-                <tbody id="benchmarksBody"></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="assumptions-table">
-            <div class="section-label">Scenario Assumptions (editable)</div>
-            <div class="table-container">
-              <table>
-                <thead><tr><th>Input</th><th>🐻 Low (Bear)</th><th>📊 Mid (Base)</th><th>🐂 High (Bull)</th></tr></thead>
-                <tbody id="assumptionsBody"></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="val-results" id="valResults"></div>
-        </div>
-
-        <!-- 2-Stage DCF Calculator -->
-        <div class="card dcf-calculator-card" style="margin-top: 24px;">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">2-Stage DCF Calculator</h2>
-              <div class="card-subtitle">Real-time fair value based on Free Cash Flow projections</div>
-            </div>
-            <div id="dcf-badge" class="badge" style="font-size: 14px; padding: 6px 12px; background: var(--surface2); color: var(--text-muted);">Awaiting Data</div>
-          </div>
-          
-          <div class="dashboard-grid" style="grid-template-columns: 1fr 1fr; align-items: start;">
-            <!-- Inputs -->
-            <div style="display: flex; flex-direction: column; gap: 16px;">
-              <div class="dcf-input-group">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                  <label class="control-label">Short-term FCF Growth (Yrs 1-5)</label>
-                  <span id="dcf-st-growth-val" class="mono" style="color: var(--primary)">8.0%</span>
+                <h2 class="card-title">Analyst Targets & Consensus</h2>
+                <div class="card-subtitle">
+                  Wall Street 12-month price targets
                 </div>
-                <input type="range" id="dcf-st-growth" min="-20" max="50" step="0.5" value="8.0" oninput="updateDcfVal('st-growth'); calculateDCF();">
+              </div>
+              <div
+                id="analyst-badge"
+                class="badge"
+                style="
+                  font-size: 14px;
+                  padding: 6px 12px;
+                  background: var(--surface2);
+                  color: var(--text-muted);
+                "
+              >
+                Awaiting Data
+              </div>
+            </div>
+
+            <div style="padding: 24px; position: relative; margin-top: 16px">
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  margin-bottom: 8px;
+                  font-size: 0.9rem;
+                  color: var(--text-muted);
+                "
+              >
+                <span id="target-low-label">Low</span>
+                <span id="target-avg-label">Average</span>
+                <span id="target-high-label">High</span>
+              </div>
+
+              <!-- The gauge bar -->
+              <div
+                style="
+                  height: 12px;
+                  border-radius: 6px;
+                  background: linear-gradient(
+                    90deg,
+                    var(--danger) 0%,
+                    var(--warning) 50%,
+                    var(--success) 100%
+                  );
+                  position: relative;
+                "
+              >
+                <!-- Current Price Marker -->
+                <div
+                  id="target-current-marker"
+                  style="
+                    position: absolute;
+                    top: -8px;
+                    left: 50%;
+                    width: 4px;
+                    height: 28px;
+                    background: var(--text-main);
+                    border: 2px solid var(--surface);
+                    border-radius: 4px;
+                    transform: translateX(-50%);
+                    box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+                    z-index: 2;
+                  "
+                ></div>
+              </div>
+
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  margin-top: 12px;
+                  font-family: var(--font-mono);
+                  font-size: 1.1rem;
+                  color: var(--text-main);
+                "
+              >
+                <span id="target-low-val">$0.00</span>
+                <span id="target-avg-val" style="font-weight: bold">$0.00</span>
+                <span id="target-high-val">$0.00</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Price Chart (TradingView Lightweight Charts) -->
+          <div class="card" id="priceChartCard">
+            <div
+              class="card-header"
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                flex-wrap: wrap;
+                gap: 12px;
+              "
+            >
+              <div>
+                <h2 class="card-title">Price Chart</h2>
+                <div class="card-subtitle" id="chartSubtitle">
+                  1-Year Daily · Candlestick · SMA-50 · SMA-200 · Volume
+                </div>
+              </div>
+              <div
+                style="
+                  display: flex;
+                  gap: 12px;
+                  align-items: center;
+                  flex-wrap: wrap;
+                "
+              >
+
+                <div class="timeframe-bar">
+                  <button
+                    class="timeframe-btn"
+                    id="tf-1D"
+                    onclick="fetchChartData('1d', '5m')"
+                  >
+                    1D
+                  </button>
+                  <button
+                    class="timeframe-btn"
+                    id="tf-1W"
+                    onclick="fetchChartData('5d', '15m')"
+                  >
+                    1W
+                  </button>
+                  <button
+                    class="timeframe-btn"
+                    id="tf-1M"
+                    onclick="fetchChartData('1mo', '1d')"
+                  >
+                    1M
+                  </button>
+                  <button
+                    class="timeframe-btn"
+                    id="tf-6M"
+                    onclick="fetchChartData('6mo', '1d')"
+                  >
+                    6M
+                  </button>
+                  <button
+                    class="timeframe-btn active"
+                    id="tf-1Y"
+                    onclick="fetchChartData('1y', '1d')"
+                  >
+                    1Y
+                  </button>
+                  <button
+                    class="timeframe-btn"
+                    id="tf-5Y"
+                    onclick="fetchChartData('5y', '1wk')"
+                  >
+                    5Y
+                  </button>
+                </div>
+              </div>
+            </div>
+            <!-- Institutional Chart Engine Toolbar & Container -->
+            <div id="chartToolbar" style="display: flex; gap: 10px; padding: 10px 16px; background: var(--surface2); border: 1px solid var(--border-color); border-bottom: none; border-radius: 12px 12px 0 0; align-items: center; flex-wrap: wrap;">
+              
+              <!-- Chart Type Switcher -->
+              <select id="chartTypeSelect" onchange="if(window.chartActions) window.chartActions.setChartType(this.value)" style="background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border-bright); border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; outline: none; cursor: pointer;">
+                <option value="Candlestick">Candles</option>
+                <option value="Line">Line</option>
+                <option value="Area">Area</option>
+                <option value="Bar">Bar</option>
+              </select>
+
+              <!-- Scale Toggle -->
+              <button onclick="if(window.chartActions) window.chartActions.toggleScale()" class="btn btn-sm btn-outline" style="padding: 6px 12px;">Log/Lin</button>
+              
+              <!-- Indicator Dropdown -->
+              <div style="position: relative;">
+                <button onclick="document.getElementById('indicatorMenu').style.display = document.getElementById('indicatorMenu').style.display === 'block' ? 'none' : 'block'" class="btn btn-sm btn-outline" style="padding: 6px 12px;">➕ Indicators</button>
+                <div id="indicatorMenu" class="dropdown-content" style="display: none; position: absolute; top: calc(100% + 5px); left: 0; background: var(--card-bg); border: 1px solid var(--border-bright); border-radius: 8px; padding: 12px; z-index: 100; min-width: 220px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Moving Averages</div>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('sma20', this.checked)"> SMA 20</label>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('sma50', this.checked)" checked> SMA 50</label>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('sma200', this.checked)" checked> SMA 200</label>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('ema9', this.checked)"> EMA 9</label>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('ema21', this.checked)"> EMA 21</label>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('vwap', this.checked)"> Anchored VWAP</label>
+                  
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Volatility</div>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('bb', this.checked)"> Bollinger Bands</label>
+                  
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Oscillators</div>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('rsi', this.checked)" checked> RSI (14)</label>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('macd', this.checked)"> MACD</label>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('stochrsi', this.checked)"> Stoch RSI</label>
+                </div>
+              </div>
+
+              <!-- Reset View -->
+              <button onclick="if(window.chartActions) window.chartActions.resetZoom()" class="btn btn-sm btn-outline" style="padding: 6px 12px;">Reset View</button>
+              
+              <div style="flex: 1;"></div>
+              
+              <!-- Utilities -->
+              <button onclick="if(window.chartActions) window.chartActions.takeScreenshot()" class="btn btn-sm btn-outline" title="Export PNG" style="padding: 6px 10px;">📸</button>
+              <button onclick="if(window.chartActions) window.chartActions.toggleFullscreen()" class="btn btn-sm btn-outline" title="Fullscreen" style="padding: 6px 10px;">⛶</button>
+            </div>
+            
+            <div id="chartWrapper" style="position: relative; width: 100%; height: 450px; background: #0f172a; border: 1px solid var(--border-color); border-radius: 0 0 12px 12px; overflow: hidden;">
+              <!-- Data HUD Overlay -->
+              <div id="chartHUD" style="position: absolute; top: 12px; left: 12px; z-index: 10; display: flex; flex-direction: column; gap: 4px; background: rgba(6,10,18,0.7); padding: 8px 12px; border-radius: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #e2e8f0; pointer-events: none; border: 1px solid rgba(255,255,255,0.06); backdrop-filter: blur(8px);">
+                <div id="hudDate" style="color: var(--text-muted);">Hover over chart to see data</div>
+                <div id="hudOHLC" style="display: none;"></div>
+                <div id="hudVol" style="display: none;"></div>
+                <div id="hudInd" style="display: flex; flex-direction: column; gap: 2px;"></div>
               </div>
               
-              <div class="dcf-input-group">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                  <label class="control-label">Terminal Growth Rate</label>
-                  <span id="dcf-term-growth-val" class="mono" style="color: var(--primary)">2.5%</span>
-                </div>
-                <input type="range" id="dcf-term-growth" min="0" max="6" step="0.1" value="2.5" oninput="updateDcfVal('term-growth'); calculateDCF();">
-              </div>
+              <!-- The Chart Container -->
+              <div id="stockPriceChart" style="width: 100%; height: 100%;"></div>
+            </div>
+          </div>
 
-              <div class="dcf-input-group">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                  <label class="control-label">Discount Rate (WACC)</label>
-                  <span id="dcf-wacc-val" class="mono" style="color: var(--primary)">9.0%</span>
+          <!-- 2-Col: Checklist + Metrics -->
+          <div class="dashboard-grid">
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h2 class="card-title">Value Investor Checklist</h2>
+                  <div class="card-subtitle">8-Pillar Quality Assessment</div>
                 </div>
-                <input type="range" id="dcf-wacc" min="4" max="20" step="0.1" value="9.0" oninput="updateDcfVal('wacc'); calculateDCF();">
+              </div>
+              <div class="score-chart-container">
+                <div class="score-ring-wrapper">
+                  <svg class="score-svg" viewBox="0 0 130 130">
+                    <circle class="score-bg" cx="65" cy="65" r="55"></circle>
+                    <circle
+                      class="score-progress"
+                      id="scoreCircle"
+                      cx="65"
+                      cy="65"
+                      r="55"
+                    ></circle>
+                  </svg>
+                  <div class="score-center">
+                    <div class="score-number mono" id="scoreText">0</div>
+                    <div class="score-denom text-muted">/ 8</div>
+                  </div>
+                </div>
+              </div>
+              <div class="checklist-items" id="checklistContainer"></div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h2 class="card-title">Key Metrics</h2>
+                  <div class="card-subtitle">TTM &amp; Multi-Year Averages</div>
+                </div>
+              </div>
+              <div class="metrics-grid" id="metricsContainer"></div>
+            </div>
+          </div>
+
+          <!-- Peer Comparison Matrix -->
+          <div class="card" id="peersCard" style="display: none">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">Peer Comparison Matrix</h2>
+                <div class="card-subtitle">
+                  Current stock (highlighted) vs. sector peers · Median row at
+                  bottom
+                </div>
               </div>
             </div>
-            
-            <!-- Output Gauge / Display -->
-            <div class="dcf-results" style="background: var(--surface2); padding: 24px; border-radius: 12px; border: 1px solid var(--border); text-align: center;">
-              <div style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 8px;">Intrinsic Fair Value / Share</div>
-              <div id="dcf-fair-value" class="mono" style="font-size: 2.5rem; font-weight: bold; color: var(--text-main); margin-bottom: 4px;">$0.00</div>
-              <div style="display: flex; justify-content: center; gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-bright);">
-                <div>
-                  <div style="font-size: 0.8rem; color: var(--text-muted);">Current Price</div>
-                  <div id="dcf-current-price" class="mono" style="font-size: 1.1rem; color: var(--text-main);">$0.00</div>
+            <div id="compsMatrix"></div>
+          </div>
+
+          <!-- Historical Table -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">Historical Financial Statement</h2>
+                <div class="card-subtitle" id="finDataYearsLabel">
+                  Annual data
                 </div>
-                <div>
-                  <div style="font-size: 0.8rem; color: var(--text-muted);">Upside/Downside</div>
-                  <div id="dcf-upside" class="mono" style="font-size: 1.1rem; color: var(--success);">+0.0%</div>
+              </div>
+              <button class="btn" onclick="downloadCSV()">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Export CSV
+              </button>
+            </div>
+            <div class="table-container">
+              <table id="financialTable">
+                <thead>
+                  <tr id="finTableHead"></tr>
+                </thead>
+                <tbody id="finTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Shares Chart -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">Shares Outstanding History</h2>
+                <div class="card-subtitle">
+                  🟢 Green = Buybacks (declining) &nbsp; 🔴 Red = Dilution
+                  (increasing)
+                </div>
+              </div>
+            </div>
+            <div class="chart-container">
+              <canvas id="sharesChart"></canvas>
+            </div>
+            <div class="table-container" style="margin-top: 16px">
+              <table>
+                <thead>
+                  <tr id="sharesTableHead"></tr>
+                </thead>
+                <tbody id="sharesTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- AI Copilot Chat -->
+          <div
+            class="card ai-card"
+            id="ai-chat-widget"
+            style="margin-top: 24px; display: none"
+          >
+            <div class="ai-card-inner">
+              <div class="ai-header">
+                <div class="ai-title">✨ AI Copilot</div>
+              </div>
+
+              <div
+                class="chips"
+                style="margin-bottom: 12px; font-size: 0.85rem"
+              >
+                <div
+                  class="chip"
+                  onclick="askAiCopilot('What are the biggest debt risks?')"
+                >
+                  Debt Risks
+                </div>
+                <div
+                  class="chip"
+                  onclick="askAiCopilot('Summarize recent earnings')"
+                >
+                  Recent Earnings
+                </div>
+                <div
+                  class="chip"
+                  onclick="askAiCopilot('Why is the stock moving?')"
+                >
+                  Why is the stock moving?
+                </div>
+              </div>
+
+              <div class="ai-chat-box">
+                <div class="ai-chat-messages" id="aiChatMessages">
+                  <!-- Chat messages go here -->
+                  <div style="color: var(--text-muted); font-style: italic">
+                    Ask a question to begin...
+                  </div>
+                </div>
+                <div class="ai-chat-input-area">
+                  <input
+                    type="text"
+                    id="aiChatInput"
+                    class="search-input"
+                    placeholder="Ask AI about this stock..."
+                    onkeypress="
+                      if (event.key === 'Enter') askAiCopilot(this.value);
+                    "
+                  />
+                  <button
+                    class="search-btn"
+                    onclick="
+                      askAiCopilot(document.getElementById('aiChatInput').value)
+                    "
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PAGE: COMPANY NEWS -->
+        <div id="page-company-news" class="page">
+          <div id="ai-news-summary-company" style="display: none"></div>
+          <div class="card" id="stockNewsCard" style="display: none">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">Recent Company News</h2>
+                <div class="card-subtitle">
+                  Aggregated from multiple sources
+                </div>
+              </div>
+            </div>
+            <div
+              class="news-accordion"
+              id="stockNewsContainer"
+              style="padding: 0 16px 16px"
+            ></div>
+          </div>
+          <div
+            id="companyNewsEmptyState"
+            style="
+              padding: 40px 24px;
+              text-align: center;
+              color: var(--text-muted);
+            "
+          >
+            Please load a stock to view its recent news.
+          </div>
+        </div>
+
+        <!-- PAGE: SCREENER -->
+        <div id="page-screener" class="page">
+          <div class="card" style="margin-bottom: 24px">
+            <h2 class="card-title">Stock Screener</h2>
+
+            <div class="chips" style="margin-top: 16px; margin-bottom: 8px">
+              <div class="chip" onclick="applyScreenerPreset('deep_value')">
+                💎 Deep Value
+              </div>
+              <div class="chip" onclick="applyScreenerPreset('high_growth')">
+                🚀 High-Growth Tech
+              </div>
+              <div
+                class="chip"
+                onclick="applyScreenerPreset('quality_compounders')"
+              >
+                👑 Quality Compounders
+              </div>
+              <div class="chip" onclick="applyScreenerPreset('clear')">
+                Clear Filters
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap;">
+              <!-- Left Side: Query Editor -->
+              <div style="flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 12px;">
+                <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">
+                  Query Editor
+                  <a href="#" style="float: right; color: var(--accent);" onclick="alert('Supported fields:\nMarket Cap, PE Ratio, ROIC, ROE, ROA, Revenue Growth, Debt to Equity, Dividend Yield, Price to Book, Price to FCF, Gross Margin, Operating Margin, Net Margin, Volume, Price, Sector'); return false;">View Fields</a>
+                </label>
+                <textarea 
+                  id="scr-advanced-query" 
+                  style="width: 100%; height: 120px; padding: 16px; font-family: var(--font-mono); resize: vertical; line-height: 1.6; font-size: 0.95rem; border: 1px solid var(--border-color); border-radius: 12px; background: rgba(0, 0, 0, 0.2); color: var(--text-main); outline: none; transition: all 0.2s; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);" 
+                  onfocus="this.style.borderColor='var(--accent)'; this.style.boxShadow='0 0 0 3px rgba(125, 211, 252, 0.2), inset 0 2px 4px rgba(0,0,0,0.1)'" 
+                  onblur="this.style.borderColor='var(--border-color)'; this.style.boxShadow='inset 0 2px 4px rgba(0,0,0,0.1)'"
+                  placeholder="e.g. Market Cap > 1B AND PE Ratio < 20 AND ROE > 15"
+                ></textarea>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                  <div style="display: flex; gap: 12px;">
+                    <button class="btn btn-primary" id="screener-run-btn" style="padding: 8px 16px;" onclick="runAdvancedScreener()">Run Scan</button>
+                    <button class="btn btn-outline" style="padding: 8px 16px;" onclick="saveCurrentScreen()">Save Screen</button>
+                  </div>
+                  <button class="btn btn-outline" style="padding: 8px 16px; border-color: var(--success); color: var(--success);" onclick="exportScreenerCSV()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: middle;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                    Export CSV
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Right Side: Saved Screens Sidebar -->
+              <div style="width: 250px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column;">
+                <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 1rem; color: var(--text-main);">Saved Screens</h3>
+                <div id="saved-screens-list" style="display: flex; flex-direction: column; gap: 8px; overflow-y: auto; max-height: 150px;">
+                  <div style="font-size: 0.85rem; color: var(--text-muted);">Sign in to save screens.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="table-responsive">
+              <table class="table data-table" id="screenerTable">
+                <thead id="screenerTableHead">
+                  <!-- Dynamically populated by JS -->
+                </thead>
+                <tbody id="screenerTableBody">
+                  <tr>
+                    <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 40px;">
+                      Run a scan to see results.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div
+              id="screenerPagination"
+              style="
+                display: none;
+                justify-content: space-between;
+                align-items: center;
+                margin-top: 15px;
+                padding: 10px 0;
+              "
+            >
+              <button
+                class="btn btn-sm btn-outline"
+                id="btnScreenerPrev"
+                onclick="screenerPrevPage()"
+              >
+                Previous
+              </button>
+              <span
+                id="screenerPageInfo"
+                class="text-muted"
+                style="font-size: 0.9em"
+                >Page 1 of 1</span
+              >
+              <button
+                class="btn btn-sm btn-outline"
+                id="btnScreenerNext"
+                onclick="screenerNextPage()"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- END PAGE: SCREENER -->
+
+        <!-- PAGE: MACRO NEWS -->
+        <div id="page-news" class="page">
+          <div id="ai-news-summary-macro" style="display: none"></div>
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">Macro News Terminal</h2>
+                <div class="card-subtitle">
+                  High-Impact Market & Economic News Stream
+                </div>
+              </div>
+            </div>
+
+            <div class="news-filters">
+              <div
+                class="chip"
+                id="chip-all"
+                onclick="filterNews('all')"
+                style="
+                  background: var(--primary-dim);
+                  border-color: var(--primary);
+                  color: var(--primary);
+                "
+              >
+                All Market News
+              </div>
+              <div class="chip" id="chip-fed" onclick="filterNews('fed')">
+                Federal Reserve / Interest Rates
+              </div>
+              <div class="chip" id="chip-bls" onclick="filterNews('bls')">
+                BLS Reports (CPI / Inflation)
+              </div>
+            </div>
+
+            <div class="news-accordion" id="newsContainer">
+              <div
+                style="
+                  padding: 24px;
+                  text-align: center;
+                  color: var(--text-muted);
+                "
+              >
+                Load a stock to view news stream.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PAGE: VALUATION -->
+        <div id="page-valuation" class="page">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">Intrinsic Value Calculator</h2>
+                <div class="card-subtitle">
+                  Discounted earnings model — edit any cell to recalculate
+                  instantly
+                </div>
+              </div>
+              <button
+                class="btn btn-primary"
+                onclick="resetValuationDefaults()"
+              >
+                ↺ Reset Defaults
+              </button>
+            </div>
+
+            <div class="val-controls">
+              <div class="control-group">
+                <label class="control-label" for="valYears"
+                  >Projection Period</label
+                >
+                <select id="valYears" onchange="calculateValuation()">
+                  <option value="5">5 Years</option>
+                  <option value="10" selected>10 Years</option>
+                </select>
+              </div>
+              <span class="badge badge-sector" id="valDataYears"
+                >— Years Data</span
+              >
+              <span
+                style="
+                  margin-left: auto;
+                  font-size: 0.78rem;
+                  color: var(--text-muted);
+                "
+                >💡 All % fields in percentage points (e.g. 15 = 15%)</span
+              >
+            </div>
+
+            <div class="benchmarks-table">
+              <div class="section-label">Historical Performance Benchmarks</div>
+              <div class="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Metric</th>
+                      <th>1-Year</th>
+                      <th>5-Year Avg</th>
+                      <th>10-Year Avg</th>
+                    </tr>
+                  </thead>
+                  <tbody id="benchmarksBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="assumptions-table">
+              <div class="section-label">Scenario Assumptions (editable)</div>
+              <div class="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Input</th>
+                      <th>🐻 Low (Bear)</th>
+                      <th>📊 Mid (Base)</th>
+                      <th>🐂 High (Bull)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="assumptionsBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="val-results" id="valResults"></div>
+          </div>
+
+          <!-- 2-Stage DCF Calculator -->
+          <div class="card dcf-calculator-card" style="margin-top: 24px">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">2-Stage DCF Calculator</h2>
+                <div class="card-subtitle">
+                  Real-time fair value based on Free Cash Flow projections
+                </div>
+              </div>
+              <div
+                id="dcf-badge"
+                class="badge"
+                style="
+                  font-size: 14px;
+                  padding: 6px 12px;
+                  background: var(--surface2);
+                  color: var(--text-muted);
+                "
+              >
+                Awaiting Data
+              </div>
+            </div>
+
+            <div
+              class="dashboard-grid"
+              style="grid-template-columns: 1fr 1fr; align-items: start"
+            >
+              <!-- Inputs -->
+              <div style="display: flex; flex-direction: column; gap: 16px">
+                <div class="dcf-input-group">
+                  <div
+                    style="
+                      display: flex;
+                      justify-content: space-between;
+                      margin-bottom: 8px;
+                    "
+                  >
+                    <label class="control-label"
+                      >Short-term FCF Growth (Yrs 1-5)</label
+                    >
+                    <span
+                      id="dcf-st-growth-val"
+                      class="mono"
+                      style="color: var(--primary)"
+                      >8.0%</span
+                    >
+                  </div>
+                  <input
+                    type="range"
+                    id="dcf-st-growth"
+                    min="-20"
+                    max="50"
+                    step="0.5"
+                    value="8.0"
+                    oninput="
+                      updateDcfVal('st-growth');
+                      calculateDCF();
+                    "
+                  />
+                </div>
+
+                <div class="dcf-input-group">
+                  <div
+                    style="
+                      display: flex;
+                      justify-content: space-between;
+                      margin-bottom: 8px;
+                    "
+                  >
+                    <label class="control-label">Terminal Growth Rate</label>
+                    <span
+                      id="dcf-term-growth-val"
+                      class="mono"
+                      style="color: var(--primary)"
+                      >2.5%</span
+                    >
+                  </div>
+                  <input
+                    type="range"
+                    id="dcf-term-growth"
+                    min="0"
+                    max="6"
+                    step="0.1"
+                    value="2.5"
+                    oninput="
+                      updateDcfVal('term-growth');
+                      calculateDCF();
+                    "
+                  />
+                </div>
+
+                <div class="dcf-input-group">
+                  <div
+                    style="
+                      display: flex;
+                      justify-content: space-between;
+                      margin-bottom: 8px;
+                    "
+                  >
+                    <label class="control-label">Discount Rate (WACC)</label>
+                    <span
+                      id="dcf-wacc-val"
+                      class="mono"
+                      style="color: var(--primary)"
+                      >9.0%</span
+                    >
+                  </div>
+                  <input
+                    type="range"
+                    id="dcf-wacc"
+                    min="4"
+                    max="20"
+                    step="0.1"
+                    value="9.0"
+                    oninput="
+                      updateDcfVal('wacc');
+                      calculateDCF();
+                    "
+                  />
+                </div>
+              </div>
+
+              <!-- Output Gauge / Display -->
+              <div
+                class="dcf-results"
+                style="
+                  background: var(--surface2);
+                  padding: 24px;
+                  border-radius: 12px;
+                  border: 1px solid var(--border);
+                  text-align: center;
+                "
+              >
+                <div
+                  style="
+                    color: var(--text-muted);
+                    font-size: 0.9rem;
+                    margin-bottom: 8px;
+                  "
+                >
+                  Intrinsic Fair Value / Share
+                </div>
+                <div
+                  id="dcf-fair-value"
+                  class="mono"
+                  style="
+                    font-size: 2.5rem;
+                    font-weight: bold;
+                    color: var(--text-main);
+                    margin-bottom: 4px;
+                  "
+                >
+                  $0.00
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    justify-content: center;
+                    gap: 16px;
+                    margin-top: 16px;
+                    padding-top: 16px;
+                    border-top: 1px solid var(--border-bright);
+                  "
+                >
+                  <div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted)">
+                      Current Price
+                    </div>
+                    <div
+                      id="dcf-current-price"
+                      class="mono"
+                      style="font-size: 1.1rem; color: var(--text-main)"
+                    >
+                      $0.00
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted)">
+                      Upside/Downside
+                    </div>
+                    <div
+                      id="dcf-upside"
+                      class="mono"
+                      style="font-size: 1.1rem; color: var(--success)"
+                    >
+                      +0.0%
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+    </main>
 
-    </div>
-  </main>
-
-  <footer class="global-footer">
-    <div class="container footer-inner">
-      <div class="footer-stats">
-        <span>Market Engine Sync: <span style="color:var(--primary);">Hourly</span></span>
-        <span>•</span>
-        <span>Status: <span style="color:var(--success);">Operational</span></span>
-      </div>
-      <div class="footer-disclaimer">
-        Disclaimer: This platform provides financial analysis tools for informational and educational purposes only. It does not constitute financial advice. Intrinsic value estimates are based on predictive models and user-defined assumptions which may not reflect future realities. Always conduct your own due diligence before making investment decisions.
-      </div>
-      <div style="margin-top: 8px;">&copy; 2026 StockSage Intelligence. All rights reserved.</div>
-    </div>
-  </footer>
-
-  <div class="toast" id="toast" role="alert">
-    <span id="toastIcon">⚠️</span>
-    <span id="toastMsg">Error</span>
-  </div>
-
-  <div id="pdf-export-template" style="display: none; width: 800px !important; max-width: 800px !important; background: #ffffff !important; color: #0f172a !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important; box-sizing: border-box !important; margin: 0 auto !important; padding: 32px !important;"></div>
-
-  <!-- Auth Modal -->
-  <div id="authModal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index:2000; align-items:center; justify-content:center;">
-    <div class="modal-content card" style="width:100%; max-width:400px; padding:30px; position:relative; background: var(--bg2); border: 1px solid var(--border); box-shadow: 0 10px 40px rgba(0,0,0,0.8); border-radius: 16px;">
-      <span class="close" onclick="closeAuthModal()" style="position:absolute; top:15px; right:20px; font-size:24px; cursor:pointer;">&times;</span>
-      <h2 id="authTitle" style="margin-top:0;">Sign In</h2>
-      <form id="authForm" onsubmit="submitAuth(event)">
-        <div style="margin-bottom:15px;">
-          <label>Username</label>
-          <input type="text" id="authUsername" required class="search-input" style="width:100%; padding:10px;">
+    <footer class="global-footer">
+      <div class="container footer-inner">
+        <div class="footer-stats">
+          <span
+            >Market Engine Sync:
+            <span style="color: var(--primary)">Hourly</span></span
+          >
+          <span>•</span>
+          <span
+            >Status:
+            <span style="color: var(--success)">Operational</span></span
+          >
         </div>
-        <div style="margin-bottom:20px;">
-          <label>Password</label>
-          <input type="password" id="authPassword" required class="search-input" style="width:100%; padding:10px;">
+        <div class="footer-disclaimer">
+          Disclaimer: This platform provides financial analysis tools for
+          informational and educational purposes only. It does not constitute
+          financial advice. Intrinsic value estimates are based on predictive
+          models and user-defined assumptions which may not reflect future
+          realities. Always conduct your own due diligence before making
+          investment decisions.
         </div>
-        <button type="submit" class="btn btn-primary" style="width:100%; padding:12px;" id="authSubmitBtn">Login</button>
-      </form>
-      <div style="margin-top:15px; text-align:center; font-size:0.9em;">
-        <span id="authToggleText">Don't have an account? <a href="#" onclick="toggleAuthMode(); return false;">Register</a></span>
+        <div style="margin-top: 8px">
+          &copy; 2026 StockSage Intelligence. All rights reserved.
+        </div>
       </div>
-      <div id="authError" class="text-danger" style="margin-top:10px; text-align:center; display:none;"></div>
-    </div>
-  </div>
+    </footer>
 
-  <!-- JS Modules — load order matters: utilities first, app last -->
-  <script src="static/js/formatters.js"></script>
-  <script src="static/js/chart_engine.js"></script>
-  <script src="static/js/comps_matrix.js"></script>
-  <script src="static/js/pdf_export.js"></script>
-  <script src="static/js/app.js?v=2"></script>
-</body>
+    <div class="toast" id="toast" role="alert">
+      <span id="toastIcon">⚠️</span>
+      <span id="toastMsg">Error</span>
+    </div>
+
+    <div
+      id="pdf-export-template"
+      style="
+        display: none;
+        width: 800px !important;
+        max-width: 800px !important;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        font-family:
+          -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto,
+          sans-serif !important;
+        box-sizing: border-box !important;
+        margin: 0 auto !important;
+        padding: 32px !important;
+      "
+    ></div>
+
+    <!-- Auth Modal -->
+    <div
+      id="authModal"
+      class="modal"
+      style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(4px);
+        z-index: 2000;
+        align-items: center;
+        justify-content: center;
+      "
+    >
+      <div
+        class="modal-content card"
+        style="
+          width: 100%;
+          max-width: 400px;
+          padding: 30px;
+          position: relative;
+          background: var(--bg2);
+          border: 1px solid var(--border);
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+          border-radius: 16px;
+        "
+      >
+        <span
+          class="close"
+          onclick="closeAuthModal()"
+          style="
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 24px;
+            cursor: pointer;
+          "
+          >&times;</span
+        >
+        <h2 id="authTitle" style="margin-top: 0">Sign In</h2>
+        <form id="authForm" onsubmit="submitAuth(event)">
+          <div style="margin-bottom: 15px">
+            <label>Username</label>
+            <input
+              type="text"
+              id="authUsername"
+              required
+              class="search-input"
+              style="width: 100%; padding: 10px"
+            />
+          </div>
+          <div style="margin-bottom: 20px">
+            <label>Password</label>
+            <input
+              type="password"
+              id="authPassword"
+              required
+              class="search-input"
+              style="width: 100%; padding: 10px"
+            />
+          </div>
+          <button
+            type="submit"
+            class="btn btn-primary"
+            style="width: 100%; padding: 12px"
+            id="authSubmitBtn"
+          >
+            Login
+          </button>
+        </form>
+        <div style="margin-top: 15px; text-align: center; font-size: 0.9em">
+          <span id="authToggleText"
+            >Don't have an account?
+            <a
+              href="#"
+              onclick="
+                toggleAuthMode();
+                return false;
+              "
+              >Register</a
+            ></span
+          >
+        </div>
+        <div
+          id="authError"
+          class="text-danger"
+          style="margin-top: 10px; text-align: center; display: none"
+        ></div>
+      </div>
+    </div>
+
+    <!-- JS Modules — load order matters: utilities first, app last -->
+    <script src="static/js/formatters.js"></script>
+    <script src="static/js/chart_engine.js?v=3"></script>
+    <script src="static/js/comps_matrix.js"></script>
+    <script src="static/js/pdf_export.js"></script>
+    <script src="static/js/auth.js"></script>
+    <script src="static/js/screener.js"></script>
+    <script src="static/js/app.js?v=3"></script>
+  </body>
 </html>
