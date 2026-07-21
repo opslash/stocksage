@@ -17,7 +17,8 @@ const AppState = {
       mid:  { revGrowth:0, niMargin:0, fcfMargin:0, pe:20, pfcf:20, sharesGrowth:0, discountRate:9 },
       high: { revGrowth:0, niMargin:0, fcfMargin:0, pe:25, pfcf:25, sharesGrowth:0, discountRate:9 }
     }
-  }
+  },
+  watchlist: []
 };
 window.AppState = AppState;
 
@@ -55,6 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchNews();
   fetchMacro();
   fetchMarketIndices();
+  fetchWatchlist();
   setInterval(fetchNews, 300000);
   setInterval(fetchMacro, 300000);
   setInterval(fetchMarketIndices, 300000);
@@ -116,7 +118,7 @@ async function fetchMarketIndices() {
 
 // ── Routing ───────────────────────────────────────
 function navigateTo(pageId) {
-  if (!['home', 'stock-analysis', 'news', 'valuation'].includes(pageId)) pageId = 'home';
+  if (!['home', 'watchlist', 'stock-analysis', 'news', 'valuation', 'company-news', 'screener'].includes(pageId)) pageId = 'home';
   window.location.hash = pageId;
   
   // Update Pages
@@ -131,6 +133,15 @@ function navigateTo(pageId) {
   
   // Render news if needed
   if (pageId === 'news') filterNews('all');
+  // Render watchlist if going to watchlist
+  if (pageId === 'watchlist') renderWatchlistDashboard();
+  // Render screener if needed
+  if (pageId === 'screener') {
+    const tableBody = document.getElementById('screenerTableBody');
+    if (!tableBody || !tableBody.innerHTML.trim()) {
+      fetchScreenerData();
+    }
+  }
 }
 window.navigateTo = navigateTo;
 
@@ -146,7 +157,111 @@ function injectSkeletons() {
   if (hero) hero.innerHTML = `<div class="skeleton" style="height: 120px; width: 100%;"></div>`;
 }
 
-// ── Loading overlay ───────────────────────────────
+// ── Screener ──────────────────────────────────────
+window.fetchScreenerData = async function() {
+  const btn = document.querySelector('#screener-controls .search-btn');
+  if (btn) btn.innerHTML = 'Scanning...';
+  
+  const minCap = document.getElementById('scr-min-cap').value;
+  const maxPe = document.getElementById('scr-max-pe').value;
+  const minRoic = document.getElementById('scr-min-roic').value;
+  const minRev = document.getElementById('scr-min-rev').value;
+  const sector = document.getElementById('scr-sector').value;
+  
+  const payload = {
+    limit: 50
+  };
+  
+  if (minCap) payload.min_market_cap = parseFloat(minCap);
+  if (maxPe) payload.max_pe = parseFloat(maxPe);
+  if (minRoic) payload.min_roic = parseFloat(minRoic);
+  if (minRev) payload.min_rev_growth = parseFloat(minRev);
+  if (sector) payload.sector = sector;
+  
+  try {
+    const res = await fetchWithRetry('/api/screener', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    renderScreener(data.data || []);
+  } catch (err) {
+    console.error('Screener fetch failed', err);
+    showToast('Failed to load screener data');
+  } finally {
+    if (btn) btn.innerHTML = 'Scan';
+  }
+};
+
+window.renderScreener = function(results) {
+  const card = document.getElementById('screenerResultsCard');
+  const tbody = document.getElementById('screenerTableBody');
+  if (!card || !tbody) return;
+  
+  if (!results.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 20px; color: var(--text-muted)">No stocks match your criteria.</td></tr>';
+    card.style.display = 'block';
+    return;
+  }
+  
+  tbody.innerHTML = results.map(row => {
+    const cls = colorCls(row.change);
+    const sign = row.change > 0 ? '+' : '';
+    const tickerStr = row.ticker ? (row.ticker.includes(':') ? row.ticker.split(':')[1] : row.ticker) : row.name;
+    const clickHandler = `searchTicker('${tickerStr}')`;
+    
+    return `
+      <tr style="cursor: pointer" onclick="${clickHandler}">
+        <td style="font-weight: bold; color: var(--accent)">${tickerStr}</td>
+        <td style="color: var(--text-muted)">${row.name || '-'}</td>
+        <td style="text-align: right">${fmt(row.close, 'price')}</td>
+        <td style="text-align: right">${fmt(row.market_cap_basic, 'currency')}</td>
+        <td style="text-align: right">${fmt(row.price_earnings_ttm, 'multiple')}</td>
+        <td style="text-align: right">${fmt(row.return_on_invested_capital / 100, 'percent')}</td>
+        <td style="text-align: right">${fmt(row.total_revenue_yoy_growth_ttm / 100, 'percent')}</td>
+        <td>${row.sector || '-'}</td>
+      </tr>
+    `;
+  }).join('');
+  
+  card.style.display = 'block';
+};
+
+
+// ── Screener Presets ────────────────────────────────
+window.applyScreenerPreset = function(preset) {
+  const minCap = document.getElementById('scr-min-cap');
+  const maxPe = document.getElementById('scr-max-pe');
+  const minRoic = document.getElementById('scr-min-roic');
+  const minRev = document.getElementById('scr-min-rev');
+  const sector = document.getElementById('scr-sector');
+
+  // Reset all
+  minCap.value = '';
+  maxPe.value = '';
+  minRoic.value = '';
+  minRev.value = '';
+  sector.value = '';
+
+  if (preset === 'deep_value') {
+    minCap.value = 2000000000;
+    maxPe.value = 15;
+    minRoic.value = 10;
+  } else if (preset === 'high_growth') {
+    sector.value = 'Technology Services';
+    minRev.value = 20;
+    minRoic.value = 15;
+  } else if (preset === 'quality_compounders') {
+    minCap.value = 10000000000;
+    minRoic.value = 18;
+    maxPe.value = 35;
+  } else if (preset === 'clear') {
+    // Just clear (already done)
+  }
+  
+  fetchScreenerData();
+};
 function showLoading(on) {
   const searchBtn = document.querySelector('.search-btn');
   if (searchBtn) {
@@ -230,9 +345,22 @@ async function searchTicker(ticker) {
       }
     }
     
+    // Reset timeframe to 1Y on new search
+    document.querySelectorAll('.timeframe-btn').forEach(btn => btn.classList.remove('active'));
+    const defaultBtn = document.getElementById('tf-1Y');
+    if (defaultBtn) defaultBtn.classList.add('active');
+    const subtitle = document.getElementById('chartSubtitle');
+    if (subtitle) subtitle.innerHTML = '1Y Daily · Candlestick · SMA-50 · SMA-200 · Volume';
+    
     renderAll(data);
     navigateTo('stock-analysis');
     showToast(`${data.live_quote?.name || data.ticker} loaded successfully`, 'success');
+
+    // Show AI Chat Widget
+    const chatWidget = document.getElementById('ai-chat-widget');
+    if (chatWidget) chatWidget.style.display = 'block';
+    const messagesEl = document.getElementById('aiChatMessages');
+    if (messagesEl) messagesEl.innerHTML = '<div style="color: var(--text-muted); font-style: italic;">Ask a question to begin...</div>';
 
     // Async peer fetch — does NOT block the main render
     if (typeof fetchAndRenderPeers === 'function') {
@@ -283,6 +411,7 @@ function renderAll(data) {
   renderHistoricalTable(data);
   renderSharesChart(data);
   populateValuationDefaults(data);
+  if (typeof renderStockNews === 'function') renderStockNews(data);
 
   // Chart engine — TradingView Lightweight Charts
   if (typeof renderStockChart === 'function' && data.chart_data) {
@@ -355,6 +484,13 @@ function renderHero(data) {
   document.getElementById('heroTicker').textContent   = vm.ticker;
   document.getElementById('heroSector').textContent   = vm.sector;
   document.getElementById('heroIndustry').textContent = vm.industry;
+
+  const watchIcon = document.getElementById('heroWatchlistIcon');
+  if (watchIcon) {
+    const isWatched = AppState.watchlist && AppState.watchlist.includes(vm.ticker);
+    watchIcon.setAttribute('fill', isWatched ? '#fbbf24' : 'none');
+    watchIcon.setAttribute('stroke', isWatched ? '#fbbf24' : 'currentColor');
+  }
 
   const priceEl = document.getElementById('heroPrice');
   priceEl.textContent = vm.price;
@@ -495,15 +631,29 @@ function renderSharesChart(data) {
   const labels = annualShares.map(x => x.year);
   const vals   = annualShares.map(x => x.shares);
 
-  const bgColors     = vals.map((v,i) => i===0 ? 'rgba(148,163,184,0.6)' : v<vals[i-1] ? 'rgba(52,211,153,0.7)' : 'rgba(248,113,113,0.7)');
-  const borderColors = vals.map((v,i) => i===0 ? 'rgba(148,163,184,1)'   : v<vals[i-1] ? 'rgba(52,211,153,1)'   : 'rgba(248,113,113,1)');
+  const startShares = vals[0];
+  const endShares = vals[vals.length - 1];
+  const isBuyback = endShares < startShares;
+  
+  const borderColor = isBuyback ? '#22c55e' : '#ef4444';
+  const bgColor = isBuyback ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+
+  // Sync Legend Status
+  const subtitleEl = document.querySelector('#sharesChart').closest('.card').querySelector('.card-subtitle');
+  if (subtitleEl) {
+    if (isBuyback) {
+      subtitleEl.innerHTML = `<span class="badge" style="background: rgba(34,197,94,0.1); color: #22c55e; border-color: rgba(34,197,94,0.2);">🟢 Net Share Decrease (Buybacks)</span>`;
+    } else {
+      subtitleEl.innerHTML = `<span class="badge" style="background: rgba(239,68,68,0.1); color: #ef4444; border-color: rgba(239,68,68,0.2);">🔴 Net Share Increase (Dilution)</span>`;
+    }
+  }
 
   AppState.sharesChart = new Chart(ctx, {
     type: 'line',
     data: {
       labels,
       datasets: [
-        { label:'Shares Outstanding', data:vals, borderColor:'rgba(56,189,248,0.8)', backgroundColor:'rgba(56,189,248,0.15)', borderWidth:3, pointRadius:5, pointBackgroundColor:'rgba(56,189,248,1)', tension:0.3, fill:true }
+        { label:'Shares Outstanding', data:vals, borderColor: borderColor, backgroundColor: bgColor, borderWidth:3, pointRadius:5, pointBackgroundColor: borderColor, tension:0.3, fill:true }
       ]
     },
     options: {
@@ -557,9 +707,13 @@ function resetValuationDefaults() {
   if (!AppState.stockData) return;
   const def = AppState.stockData.valuation_defaults || {};
   const v   = AppState.valuationInputs.assumptions;
-  v.low  = { revGrowth:toNum(def.low_revenue_growth)*100,  niMargin:toNum(def.low_ni_margin)*100,  fcfMargin:toNum(def.low_fcf_margin)*100,  pe:toNum(def.low_pe,15),   pfcf:toNum(def.low_pfcf,15),  sharesGrowth:toNum(def.shares_growth)*100, discountRate:toNum(def.discount_rate,0.09)*100 };
-  v.mid  = { revGrowth:toNum(def.mid_revenue_growth)*100,  niMargin:toNum(def.mid_ni_margin)*100,  fcfMargin:toNum(def.mid_fcf_margin)*100,  pe:toNum(def.mid_pe,20),   pfcf:toNum(def.mid_pfcf,20),  sharesGrowth:toNum(def.shares_growth)*100, discountRate:toNum(def.discount_rate,0.09)*100 };
-  v.high = { revGrowth:toNum(def.high_revenue_growth)*100, niMargin:toNum(def.high_ni_margin)*100, fcfMargin:toNum(def.high_fcf_margin)*100, pe:toNum(def.high_pe,25),  pfcf:toNum(def.high_pfcf,25), sharesGrowth:toNum(def.shares_growth)*100, discountRate:toNum(def.discount_rate,0.09)*100 };
+  const pct = value => Number.isFinite(value) ? value * 100 : null;
+  const val = value => Number.isFinite(value) ? value : null;
+  // Defaults are supplied by the ticker's own history; never silently insert
+  // generic multiples/margins for companies with missing statements.
+  v.low  = { revGrowth:pct(def.low_revenue_growth),  niMargin:pct(def.low_ni_margin),  fcfMargin:pct(def.low_fcf_margin),  pe:val(def.low_pe),  pfcf:val(def.low_pfcf),  sharesGrowth:pct(def.low_shares_growth),  discountRate:pct(def.low_discount_rate) };
+  v.mid  = { revGrowth:pct(def.mid_revenue_growth),  niMargin:pct(def.mid_ni_margin),  fcfMargin:pct(def.mid_fcf_margin),  pe:val(def.mid_pe),  pfcf:val(def.mid_pfcf),  sharesGrowth:pct(def.mid_shares_growth),  discountRate:pct(def.mid_discount_rate) };
+  v.high = { revGrowth:pct(def.high_revenue_growth), niMargin:pct(def.high_ni_margin), fcfMargin:pct(def.high_fcf_margin), pe:val(def.high_pe), pfcf:val(def.high_pfcf), sharesGrowth:pct(def.high_shares_growth), discountRate:pct(def.high_discount_rate) };
   renderAssumptionsTable();
   calculateValuation();
 }
@@ -580,12 +734,13 @@ function renderAssumptionsTable() {
     <tr><td>${r.label}</td>${['low','mid','high'].map(s => `
       <td><input type="number" step="0.01" class="assumption-input"
         id="inp_${s}_${r.id}" data-scenario="${s}" data-field="${r.id}"
-        value="${(v[s][r.id]||0).toFixed(2)}"
+        value="${Number.isFinite(v[s][r.id]) ? v[s][r.id].toFixed(2) : ''}"
         oninput="updateAssumption(this)"></td>`).join('')}</tr>`).join('');
 }
 
 function updateAssumption(el) {
-  AppState.valuationInputs.assumptions[el.dataset.scenario][el.dataset.field] = parseFloat(el.value) || 0;
+  const value = Number(el.value);
+  AppState.valuationInputs.assumptions[el.dataset.scenario][el.dataset.field] = Number.isFinite(value) ? value : null;
   calculateValuation();
 }
 window.updateAssumption = updateAssumption;
@@ -598,7 +753,7 @@ function calculateValuation() {
   const currShares = d.shares_outstanding;
   const currPrice  = d.price;
 
-  if (!isValid(currRev) || !isValid(currShares) || !isValid(currPrice)) {
+  if (!isValid(currRev) || currRev <= 0 || !isValid(currShares) || currShares <= 0 || !isValid(currPrice) || currPrice <= 0) {
     document.getElementById('valResults').innerHTML = '<p style="text-align:center;padding:24px;color:var(--text-muted);">Insufficient data for valuation.</p>';
     return;
   }
@@ -614,18 +769,24 @@ function calculateValuation() {
     const sh_g  = inp.sharesGrowth / 100;
     const dr    = inp.discountRate / 100;
 
+    const valid = [rev_g, ni_m, fcf_m, pe, pfcf, sh_g, dr].every(Number.isFinite)
+      && rev_g > -1 && rev_g <= 1 && Math.abs(ni_m) <= 1 && Math.abs(fcf_m) <= 1
+      && pe > 0 && pfcf > 0 && dr > -1;
+    if (!valid) {
+      res[s] = { fvPE: null, fvPFCF: null, fvAvg: null };
+      return;
+    }
+
     const fRev    = currRev    * Math.pow(1 + rev_g, N);
     const fShares = currShares * Math.pow(1 + sh_g, N);
     const fNI     = fRev * ni_m;
     const fFCF    = fRev * fcf_m;
 
-    const fPricePE   = fShares > 0 ? (fNI  * pe)   / fShares : 0;
-    const fPricePFCF = fShares > 0 ? (fFCF * pfcf) / fShares : 0;
-    const divisor    = dr > 0 ? Math.pow(1 + dr, N) : 1;
-
-    const fvPE   = fPricePE   / divisor;
-    const fvPFCF = fPricePFCF / divisor;
-    const fvAvg  = (fvPE + fvPFCF) / 2;
+    const divisor = Math.pow(1 + dr, N);
+    const fvPE = fNI > 0 && fShares > 0 ? (fNI * pe) / fShares / divisor : null;
+    const fvPFCF = fFCF > 0 && fShares > 0 ? (fFCF * pfcf) / fShares / divisor : null;
+    const values = [fvPE, fvPFCF].filter(value => Number.isFinite(value) && value > 0);
+    const fvAvg = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 
     res[s] = { fvPE, fvPFCF, fvAvg };
   });
@@ -648,7 +809,7 @@ function renderValuationResults(res, price) {
   document.getElementById('valResults').innerHTML = cards.map(c => {
     const { fvPE, fvPFCF, fvAvg } = c.data;
     const dPE  = diff(fvPE), dPFCF = diff(fvPFCF), dAvg = diff(fvAvg);
-    const mPE  = mos(fvPE);
+    const mAvg = mos(fvAvg);
     return `<div class="val-card ${c.s}">
       <div class="val-scenario">${c.name}</div>
       <div class="val-price-row">
@@ -668,7 +829,7 @@ function renderValuationResults(res, price) {
         <div class="val-price mono" style="font-size:1.6rem;">${fmt(fvAvg,'price')}</div>
         ${dAvg !== null ? `<div class="val-diff ${colorCls(dAvg)}" style="font-weight:700;">${fmt(dAvg,'percent')} · ${valTxt(dAvg)}</div>` : ''}
       </div>
-      ${mPE !== null ? `<div class="mos-badge">MoS (P/E): <span class="${colorCls(mPE)}">${mPE.toFixed(1)}%</span></div>` : ''}
+      ${mAvg !== null ? `<div class="mos-badge">MoS (Avg): <span class="${colorCls(mAvg)}">${mAvg.toFixed(1)}%</span></div>` : ''}
     </div>`;
   }).join('');
 }
@@ -682,6 +843,7 @@ async function fetchNews() {
     AppState.newsData = payload.articles || [];
     AppState.newsStatus = payload.status;
     if (window.location.hash === '#news') filterNews('all');
+    fetchAiNewsSummary(AppState.newsData, 'ai-news-summary-macro');
   } catch(err) {
     console.warn('fetchNews failed:', err);
     document.getElementById('newsContainer').innerHTML =
@@ -736,7 +898,7 @@ function filterNews(category) {
 
   const wrap = document.getElementById('newsContainer');
   
-  if (AppState.newsStatus === 'unavailable') {
+  if (AppState.newsStatus === 'unavailable' && !(AppState.newsData || []).length) {
     wrap.innerHTML = `<div style="padding: 32px; text-align: center; color: var(--warning); background: rgba(234, 179, 8, 0.05); border: 1px solid rgba(234, 179, 8, 0.2); border-radius: 12px; margin: 16px;">
         <div style="font-size: 1.2rem; font-weight: 600; margin-bottom: 8px;">⚠️ News API Unavailable</div>
         <div style="font-size: 0.95rem; color: var(--text-soft);">The Premium News API key is missing or invalid. Live macro news is currently disabled. Please add a valid GNEWS_API_KEY to your backend environment to restore functionality.</div>
@@ -831,3 +993,301 @@ function downloadCSV() {
   if (window.showToast) showToast(`${ticker} financials exported ✓`, 'success');
 }
 window.downloadCSV = downloadCSV;
+
+// ── Stock News Rendering ──────────────────────────
+function renderStockNews(data) {
+  const card = document.getElementById('stockNewsCard');
+  const wrap = document.getElementById('stockNewsContainer');
+  const empty = document.getElementById('companyNewsEmptyState');
+  if (!card || !wrap) return;
+
+  const news = data.news || [];
+  if (!news.length) {
+    card.style.display = 'none';
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+
+  card.style.display = 'block';
+  if (empty) empty.style.display = 'none';
+  
+  fetchAiNewsSummary(news, 'ai-news-summary-company');
+  
+  wrap.innerHTML = news.map((n, i) => {
+    let date = n.published_at ? new Date(n.published_at).toLocaleString() : '';
+    return `
+      <div class="news-item" id="stockNewsItem_${i}">
+        <div class="news-header" onclick="toggleStockNews(${i})">
+          <div class="news-meta">
+            <span class="news-source">${n.source || 'NEWS'}</span>
+            <span style="font-size: 0.75rem; font-weight:600;">${n.publisher || ''}</span>
+          </div>
+          <div class="news-title">${n.title || 'Untitled Update'}</div>
+          <div class="news-date">${date}</div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+        <div class="news-body">
+          ${n.snippet || 'No detailed summary provided.'}
+          ${n.link ? `<br><br><a href="${n.link}" target="_blank" rel="noopener noreferrer" style="color:var(--primary);">Read full source article &rarr;</a>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+window.renderStockNews = renderStockNews;
+
+function toggleStockNews(idx) {
+  const el = document.getElementById(`stockNewsItem_${idx}`);
+  if (el) el.classList.toggle('open');
+}
+window.toggleStockNews = toggleStockNews;
+
+// ── Watchlist Features ─────────────────────────────
+async function fetchWatchlist() {
+  try {
+    const res = await fetch('/api/watchlist');
+    if (res.ok) {
+      AppState.watchlist = await res.json();
+    }
+  } catch(err) {
+    console.error("Failed to fetch watchlist:", err);
+  }
+}
+window.fetchWatchlist = fetchWatchlist;
+
+async function toggleWatchlist(ticker) {
+  if (!ticker) return;
+  const isWatched = AppState.watchlist.includes(ticker);
+  const method = isWatched ? 'DELETE' : 'POST';
+  try {
+    const res = await fetch(`/api/watchlist/${encodeURIComponent(ticker)}`, { method });
+    if (res.ok) {
+      AppState.watchlist = await res.json();
+      if (AppState.currentTicker === ticker) renderHero(AppState.stockData); // Update star icon
+      if (window.location.hash === '#watchlist') renderWatchlistDashboard(); // Update grid
+      showToast(isWatched ? `${ticker} removed from watchlist.` : `${ticker} added to watchlist.`, 'success');
+    }
+  } catch(err) {
+    showToast("Failed to update watchlist.", 'error');
+  }
+}
+window.toggleWatchlist = toggleWatchlist;
+
+async function renderWatchlistDashboard() {
+  const container = document.getElementById('watchlistGrid');
+  if (!container) return; // Not on the home page or layout not updated yet
+  
+  if (!AppState.watchlist || AppState.watchlist.length === 0) {
+    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px;">
+      You haven't added any stocks to your watchlist yet.<br>Search for a stock and click the ⭐ icon to save it.
+    </div>`;
+    return;
+  }
+  
+  container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 20px;">Fetching live quotes...</div>`;
+  
+  try {
+    const res = await fetch('/api/watchlist/quotes');
+    if (!res.ok) throw new Error("Failed");
+    const quotes = await res.json();
+    
+    if (quotes.length === 0) {
+      container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted);">Failed to load quotes.</div>`;
+      return;
+    }
+    
+    container.innerHTML = quotes.map(q => {
+      const isUp = q.change >= 0;
+      const color = isUp ? 'var(--positive)' : 'var(--negative)';
+      const sign = isUp ? '+' : '';
+      return `
+        <div class="card" style="padding: 16px; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" onclick="els.searchInput.value='${q.ticker}'; els.searchForm.dispatchEvent(new Event('submit'));">
+          <div style="display:flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+            <div style="font-size: 1.25rem; font-weight: 700;">${q.ticker}</div>
+            <button onclick="event.stopPropagation(); toggleWatchlist('${q.ticker}');" style="background:none; border:none; color:var(--text-main); font-size:1.2rem; cursor:pointer;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="#fbbf24" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+            </button>
+          </div>
+          <div style="font-size: 1.5rem; font-weight: 600;">$${q.price.toFixed(2)}</div>
+          <div style="color: ${color}; font-size: 0.9rem; font-weight: 500; margin-top: 4px;">
+            ${sign}${q.change.toFixed(2)} (${sign}${q.changePercent.toFixed(2)}%)
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+  } catch(err) {
+    console.error("Watchlist quote error:", err);
+    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--negative); padding: 20px;">Failed to fetch live quotes.</div>`;
+  }
+}
+window.renderWatchlistDashboard = renderWatchlistDashboard;
+
+// ── Chart Timeframe Logic ────────────────────────
+async function fetchChartData(range, interval) {
+  if (!AppState.currentTicker) return;
+  
+  // Update Active Button
+  document.querySelectorAll('.timeframe-btn').forEach(btn => btn.classList.remove('active'));
+  const btnId = `tf-${range.toUpperCase()}`;
+  const btn = document.getElementById(btnId);
+  if (btn) btn.classList.add('active');
+  
+  // Show Loading state on chart subtitle
+  const subtitle = document.getElementById('chartSubtitle');
+  if (subtitle) {
+    let lbl = 'Daily';
+    if (interval.includes('m')) lbl = `${interval.replace('m','')} Minute`;
+    else if (interval.includes('h')) lbl = `${interval.replace('h','')} Hour`;
+    else if (interval.includes('wk')) lbl = `Weekly`;
+    subtitle.innerHTML = `Loading ${range.toUpperCase()} ${lbl} data...`;
+  }
+  
+  try {
+    const res = await fetch(`/api/chart/${encodeURIComponent(AppState.currentTicker)}?range=${range}&interval=${interval}`);
+    if (!res.ok) throw new Error("Failed to fetch chart");
+    
+    const chartData = await res.json();
+    
+    // Check if the current chart interval shows SMAs
+    const hasSMA = chartData.sma_50 && chartData.sma_50.length > 0;
+    
+    if (subtitle) {
+      let lbl = 'Daily';
+      if (interval.includes('m')) lbl = `${interval.replace('m','')} Minute`;
+      else if (interval.includes('h')) lbl = `${interval.replace('h','')} Hour`;
+      else if (interval.includes('wk')) lbl = `Weekly`;
+      subtitle.innerHTML = `${range.toUpperCase()} ${lbl} · Candlestick${hasSMA ? ' · SMA-50 · SMA-200' : ''} · Volume`;
+    }
+    
+    window.renderStockChart('stockPriceChart', chartData);
+    
+  } catch (err) {
+    console.error("Failed to load chart data:", err);
+    if (subtitle) subtitle.innerHTML = `<span style="color:var(--danger)">Failed to load chart data</span>`;
+  }
+}
+window.fetchChartData = fetchChartData;
+
+// ── AI Copilot ────────────────────────────────────────────────────────────
+
+async function fetchAiNewsSummary(articles, targetDivId) {
+  const container = document.getElementById(targetDivId);
+  if (!container || !articles || articles.length === 0) return;
+  
+  container.style.display = 'block';
+  container.innerHTML = `<div class="card ai-card" style="margin-bottom:24px;">
+    <div class="ai-card-inner">
+      <div class="ai-header">
+        <div class="ai-title">✨ AI Executive Briefing</div>
+        <div class="ai-sentiment-badge ai-sentiment-Neutral">Analyzing...</div>
+      </div>
+      <div style="color:var(--text-muted); font-size: 0.9rem;">Gathering insights via Gemini 1.5 Flash...</div>
+    </div>
+  </div>`;
+  
+  try {
+    const res = await fetch('/api/ai/news-summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ articles: articles })
+    });
+    const data = await res.json();
+    
+    container.innerHTML = `
+    <div class="card ai-card" style="margin-bottom:24px;">
+      <div class="ai-card-inner">
+        <div class="ai-header">
+          <div class="ai-title">✨ AI Executive Briefing</div>
+          <div class="ai-sentiment-badge ai-sentiment-${data.sentiment}">${data.sentiment}</div>
+        </div>
+        <ul class="ai-bullets">
+          ${data.summary.map(s => `<li>${s}</li>`).join('')}
+        </ul>
+        ${data.takeaways && data.takeaways.length ? `
+          <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px;">
+            <strong>Key Themes:</strong> ${data.takeaways.join(' • ')}
+          </div>
+        ` : ''}
+      </div>
+    </div>`;
+  } catch (err) {
+    console.error("AI News Summary Error:", err);
+    container.style.display = 'none';
+  }
+}
+
+async function askAiCopilot(query) {
+  const inputEl = document.getElementById('aiChatInput');
+  const messagesEl = document.getElementById('aiChatMessages');
+  const chatWidget = document.getElementById('ai-chat-widget');
+  
+  if (!query && inputEl) query = inputEl.value;
+  if (!query || !query.trim()) return;
+  if (inputEl) inputEl.value = '';
+  if (chatWidget) chatWidget.style.display = 'block';
+  
+  if (messagesEl.innerHTML.includes('Ask a question to begin...')) {
+    messagesEl.innerHTML = '';
+  }
+  
+  messagesEl.innerHTML += `<div style="margin-bottom:12px; text-align:right;">
+    <div style="display:inline-block; background:var(--primary); padding:8px 12px; border-radius:12px; color:#fff;">
+      ${query}
+    </div>
+  </div>`;
+  
+  const loaderId = 'ai-loader-' + Date.now();
+  messagesEl.innerHTML += `<div id="${loaderId}" style="margin-bottom:12px; text-align:left;">
+    <div style="display:inline-block; background:rgba(255,255,255,0.05); padding:8px 12px; border-radius:12px;">
+      <span style="opacity:0.6;">✨ Analyzing...</span>
+    </div>
+  </div>`;
+  
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  
+  try {
+    const context = {
+      price: AppState.stockData?.live_quote?.close,
+      valuation: AppState.stockData?.valuation?.intrinsic_value,
+      pe: AppState.stockData?.fundamentals?.price_earnings_ttm,
+      growth: AppState.stockData?.fundamentals?.total_revenue_yoy_growth_ttm
+    };
+    
+    const res = await fetch('/api/ai/ask-copilot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ticker: AppState.currentTicker || 'Market',
+        query: query,
+        context: context
+      })
+    });
+    
+    const data = await res.json();
+    const loader = document.getElementById(loaderId);
+    if(loader) loader.remove();
+    
+    let formattedText = data.response
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+      
+    messagesEl.innerHTML += `<div style="margin-bottom:12px; text-align:left;">
+      <div style="display:inline-block; background:rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); padding:12px; border-radius:12px; width: 100%;">
+        ${formattedText}
+      </div>
+    </div>`;
+  } catch (err) {
+    console.error("AI Copilot Error:", err);
+    const loader = document.getElementById(loaderId);
+    if(loader) loader.remove();
+    messagesEl.innerHTML += `<div style="margin-bottom:12px; text-align:left; color:#f87171;">
+      ⚠️ Could not reach AI Copilot. Check API connection.
+    </div>`;
+  }
+  
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+window.askAiCopilot = askAiCopilot;
+window.fetchAiNewsSummary = fetchAiNewsSummary;
+

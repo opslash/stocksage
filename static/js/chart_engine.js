@@ -16,10 +16,30 @@
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    // Transform new array payload into expected object format
+    let parsedData = {};
+    if (Array.isArray(chartData)) {
+      parsedData = { candlestick: [], sma_50: [], sma_200: [], rsi_14: [], volume: [] };
+      for (let i = 0; i < chartData.length; i++) {
+        const pt = chartData[i];
+        parsedData.candlestick.push({ time: pt.time, open: pt.open, high: pt.high, low: pt.low, close: pt.close });
+        if (pt.sma_50 !== undefined) parsedData.sma_50.push({ time: pt.time, value: pt.sma_50 });
+        if (pt.sma_200 !== undefined) parsedData.sma_200.push({ time: pt.time, value: pt.sma_200 });
+        if (pt.rsi_14 !== undefined) parsedData.rsi_14.push({ time: pt.time, value: pt.rsi_14 });
+        if (pt.volume !== undefined) {
+          const prevClose = i > 0 ? chartData[i-1].close : pt.close;
+          const color = pt.close >= prevClose ? "rgba(16, 185, 129, 0.5)" : "rgba(239, 68, 68, 0.5)";
+          parsedData.volume.push({ time: pt.time, value: pt.volume, color: color });
+        }
+      }
+    } else {
+      parsedData = chartData || {};
+    }
+
     // Try to reuse existing chart instance
     if (_chartInstances[containerId]) {
       const inst = _chartInstances[containerId];
-      const cd = chartData || {};
+      const cd = parsedData;
       
       if (!cd.candlestick || !cd.candlestick.length) {
         // If data is empty but chart exists, we just clear the container
@@ -33,18 +53,55 @@
       }
       
       // Update data
-      if (inst.candleSeries) inst.candleSeries.setData(cd.candlestick);
+      if (inst.candleSeries) inst.candleSeries.setData(cd.candlestick || []);
       
       let sma50Val = null;
-      if (inst.sma50) {
-          inst.sma50.setData(cd.sma_50 || []);
-          if (cd.sma_50 && cd.sma_50.length) sma50Val = cd.sma_50[cd.sma_50.length - 1]?.value;
+      if (cd.sma_50 && cd.sma_50.length > 0) {
+          if (!inst.sma50) {
+              inst.sma50 = inst.chart.addLineSeries({
+                  color: '#2196F3', lineWidth: 2, title: 'SMA 50',
+                  lastValueVisible: true, priceLineVisible: false, crosshairMarkerVisible: false,
+              });
+          }
+          inst.sma50.setData(cd.sma_50);
+          sma50Val = cd.sma_50[cd.sma_50.length - 1]?.value;
+      } else if (inst.sma50) {
+          inst.chart.removeSeries(inst.sma50);
+          inst.sma50 = null;
       }
       
       let sma200Val = null;
-      if (inst.sma200) {
-          inst.sma200.setData(cd.sma_200 || []);
-          if (cd.sma_200 && cd.sma_200.length) sma200Val = cd.sma_200[cd.sma_200.length - 1]?.value;
+      if (cd.sma_200 && cd.sma_200.length > 0) {
+          if (!inst.sma200) {
+              inst.sma200 = inst.chart.addLineSeries({
+                  color: '#FF9800', lineWidth: 2, title: 'SMA 200',
+                  lastValueVisible: true, priceLineVisible: false, crosshairMarkerVisible: false,
+              });
+          }
+          inst.sma200.setData(cd.sma_200);
+          sma200Val = cd.sma_200[cd.sma_200.length - 1]?.value;
+      } else if (inst.sma200) {
+          inst.chart.removeSeries(inst.sma200);
+          inst.sma200 = null;
+      }
+      
+      let rsiVal = null;
+      if (cd.rsi_14 && cd.rsi_14.length > 0) {
+          if (!inst.rsiSeries) {
+              inst.rsiSeries = inst.chart.addLineSeries({
+                  color: '#a78bfa', lineWidth: 1.5, title: 'RSI',
+                  priceScaleId: 'rsi_scale',
+                  lastValueVisible: true, priceLineVisible: false, crosshairMarkerVisible: false,
+              });
+              try {
+                  inst.rsiSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+              } catch (e) {}
+          }
+          inst.rsiSeries.setData(cd.rsi_14);
+          rsiVal = cd.rsi_14[cd.rsi_14.length - 1]?.value;
+      } else if (inst.rsiSeries) {
+          inst.chart.removeSeries(inst.rsiSeries);
+          inst.rsiSeries = null;
       }
       
       if (inst.volSeries) inst.volSeries.setData(cd.volume || []);
@@ -56,8 +113,9 @@
       if (legend) {
         legend.innerHTML = [
           `<span style="color:#94a3b8">Candlestick</span>`,
-          sma50Val  != null ? `<span><span style="display:inline-block;width:16px;height:2px;background:#2196F3;vertical-align:middle;margin-right:4px;border-radius:1px"></span><span style="color:#2196F3">SMA 50</span> <span style="color:#64748b">${sma50Val.toFixed(2)}</span></span>` : '',
-          sma200Val != null ? `<span><span style="display:inline-block;width:16px;height:2px;background:#FF9800;vertical-align:middle;margin-right:4px;border-radius:1px"></span><span style="color:#FF9800">SMA 200</span> <span style="color:#64748b">${sma200Val.toFixed(2)}</span></span>` : '',
+          (sma50Val  != null && inst.sma50?.options().visible !== false) ? `<span><span style="display:inline-block;width:16px;height:2px;background:#2196F3;vertical-align:middle;margin-right:4px;border-radius:1px"></span><span style="color:#2196F3">SMA 50</span> <span style="color:#64748b">${sma50Val.toFixed(2)}</span></span>` : '',
+          (sma200Val != null && inst.sma200?.options().visible !== false) ? `<span><span style="display:inline-block;width:16px;height:2px;background:#FF9800;vertical-align:middle;margin-right:4px;border-radius:1px"></span><span style="color:#FF9800">SMA 200</span> <span style="color:#64748b">${sma200Val.toFixed(2)}</span></span>` : '',
+          (rsiVal != null && inst.rsiSeries?.options().visible !== false) ? `<span><span style="display:inline-block;width:16px;height:2px;background:#a78bfa;vertical-align:middle;margin-right:4px;border-radius:1px"></span><span style="color:#a78bfa">RSI 14</span> <span style="color:#64748b">${rsiVal.toFixed(2)}</span></span>` : '',
         ].filter(Boolean).join('');
       }
       return;
@@ -71,7 +129,7 @@
       return;
     }
 
-    const cd = chartData || {};
+    const cd = parsedData;
     if (!cd.candlestick || !cd.candlestick.length) {
       container.innerHTML =
         '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.9rem;">No price history available.</div>';
@@ -99,7 +157,7 @@
       },
       rightPriceScale: {
         borderColor: 'rgba(255,255,255,0.08)',
-        scaleMargins: { top: 0.05, bottom: 0.22 },
+        scaleMargins: { top: 0.05, bottom: 0.35 },
       },
       timeScale: {
         borderColor: 'rgba(255,255,255,0.08)',
@@ -120,8 +178,9 @@
 
     // ── SMA 50 ───────────────────────────────────────────────────────────────
     let sma50Val = null;
+    let sma50 = null;
     if (cd.sma_50 && cd.sma_50.length) {
-      const sma50 = chart.addLineSeries({
+      sma50 = chart.addLineSeries({
         color:            '#2196F3',
         lineWidth:        2,
         title:            'SMA 50',
@@ -135,8 +194,9 @@
 
     // ── SMA 200 ──────────────────────────────────────────────────────────────
     let sma200Val = null;
+    let sma200 = null;
     if (cd.sma_200 && cd.sma_200.length) {
-      const sma200 = chart.addLineSeries({
+      sma200 = chart.addLineSeries({
         color:            '#FF9800',
         lineWidth:        2,
         title:            'SMA 200',
@@ -148,15 +208,36 @@
       sma200Val = cd.sma_200[cd.sma_200.length - 1]?.value;
     }
 
-    // ── Volume (bottom overlay) ──────────────────────────────────────────────
+    // ── RSI 14 (bottom overlay pane) ─────────────────────────────────────────
+    let rsiVal = null;
+    let rsiSeries = null;
+    if (cd.rsi_14 && cd.rsi_14.length) {
+      rsiSeries = chart.addLineSeries({
+        color:            '#a78bfa',
+        lineWidth:        1.5,
+        title:            'RSI',
+        priceScaleId:     'rsi_scale',
+        lastValueVisible: true,
+        priceLineVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      try {
+        rsiSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+      } catch (e) {}
+      rsiSeries.setData(cd.rsi_14);
+      rsiVal = cd.rsi_14[cd.rsi_14.length - 1]?.value;
+    }
+
+    // ── Volume (middle overlay pane) ─────────────────────────────────────────
+    let volSeries = null;
     if (cd.volume && cd.volume.length) {
-      const volSeries = chart.addHistogramSeries({
+      volSeries = chart.addHistogramSeries({
         priceFormat:   { type: 'volume' },
         priceScaleId:  'vol_scale',
       });
       try {
         volSeries.priceScale().applyOptions({
-          scaleMargins: { top: 0.82, bottom: 0 },
+          scaleMargins: { top: 0.67, bottom: 0.20 },
         });
       } catch (e) {
         console.warn('vol_scale config ignored', e);
@@ -176,11 +257,24 @@
       'padding:6px 12px', 'font-size:0.78rem', 'backdrop-filter:blur(8px)',
       'border:1px solid rgba(255,255,255,0.06)',
     ].join(';');
-    legend.innerHTML = [
-      `<span style="color:#94a3b8">Candlestick</span>`,
-      sma50Val  != null ? `<span><span style="display:inline-block;width:16px;height:2px;background:#2196F3;vertical-align:middle;margin-right:4px;border-radius:1px"></span><span style="color:#2196F3">SMA 50</span> <span style="color:#64748b">${sma50Val.toFixed(2)}</span></span>` : '',
-      sma200Val != null ? `<span><span style="display:inline-block;width:16px;height:2px;background:#FF9800;vertical-align:middle;margin-right:4px;border-radius:1px"></span><span style="color:#FF9800">SMA 200</span> <span style="color:#64748b">${sma200Val.toFixed(2)}</span></span>` : '',
-    ].filter(Boolean).join('');
+    
+    // Store update function on legend element
+    legend.update = () => {
+        const inst = _chartInstances[containerId];
+        if (!inst) return;
+        const s50v = inst.sma50 ? inst.sma50.dataByIndex(inst.sma50.data().length-1)?.value : null;
+        const s200v = inst.sma200 ? inst.sma200.dataByIndex(inst.sma200.data().length-1)?.value : null;
+        const rsiv = inst.rsiSeries ? inst.rsiSeries.dataByIndex(inst.rsiSeries.data().length-1)?.value : null;
+        
+        legend.innerHTML = [
+          `<span style="color:#94a3b8">Candlestick</span>`,
+          (s50v  != null && inst.sma50?.options().visible !== false) ? `<span><span style="display:inline-block;width:16px;height:2px;background:#2196F3;vertical-align:middle;margin-right:4px;border-radius:1px"></span><span style="color:#2196F3">SMA 50</span> <span style="color:#64748b">${s50v.toFixed(2)}</span></span>` : '',
+          (s200v != null && inst.sma200?.options().visible !== false) ? `<span><span style="display:inline-block;width:16px;height:2px;background:#FF9800;vertical-align:middle;margin-right:4px;border-radius:1px"></span><span style="color:#FF9800">SMA 200</span> <span style="color:#64748b">${s200v.toFixed(2)}</span></span>` : '',
+          (rsiv != null && inst.rsiSeries?.options().visible !== false) ? `<span><span style="display:inline-block;width:16px;height:2px;background:#a78bfa;vertical-align:middle;margin-right:4px;border-radius:1px"></span><span style="color:#a78bfa">RSI 14</span> <span style="color:#64748b">${rsiv.toFixed(2)}</span></span>` : '',
+        ].filter(Boolean).join('');
+    };
+    
+    legend.update();
     container.style.position = 'relative';
     container.appendChild(legend);
 
@@ -196,9 +290,28 @@
         chart, 
         observer, 
         candleSeries, 
-        sma50: typeof sma50 !== 'undefined' ? sma50 : null, 
-        sma200: typeof sma200 !== 'undefined' ? sma200 : null, 
-        volSeries: typeof volSeries !== 'undefined' ? volSeries : null
+        sma50, 
+        sma200, 
+        rsiSeries,
+        volSeries,
+        lastData: cd
     };
+  };
+  
+  window.setIndicatorVisibility = function(containerId, indicator, isVisible) {
+      const inst = _chartInstances[containerId];
+      if (!inst) return;
+      
+      let series = null;
+      if (indicator === 'sma50') series = inst.sma50;
+      if (indicator === 'sma200') series = inst.sma200;
+      if (indicator === 'rsi') series = inst.rsiSeries;
+      
+      if (series) {
+          series.applyOptions({ visible: isVisible });
+      }
+      
+      // Update Legend visibility by re-rendering with the same data
+      window.renderStockChart(containerId, inst.lastData);
   };
 })();

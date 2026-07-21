@@ -9,11 +9,15 @@ from contextlib import asynccontextmanager
 
 from config import logger, validate_config
 from cache import load_cache, save_cache, CACHE_DIR
-from stock_service import resolve_ticker, fetch_stock_data, flatten_response, make_ticker, fetch_peer_comparison
+from stock_service import resolve_ticker, fetch_stock_data, flatten_response, make_ticker, fetch_peer_comparison, fetch_chart_data
 from news_service import fetch_macro_news
 from macro_service import fetch_macro_indicators
 from jobs import refresh_news_cache, refresh_popular_tickers
+import watchlist_service
+import screener_service
 import yfinance as yf
+import ai_service
+from pydantic import BaseModel
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -72,7 +76,16 @@ async def get_quote(ticker: str):
     if cached:
         # Bypass stale cache if it predates the chart_data feature
         has_chart = isinstance(cached.get("chart_data"), dict) and bool(cached["chart_data"].get("candlestick"))
-        if has_chart:
+        has_consistent_price_stats = (
+            cached.get("priceStatisticsVersion") == 2
+            and cached.get("priceStatisticsAdjusted") is True
+            and cached.get("valuationDefaultsVersion") == 2
+            and cached.get("week52High") is not None
+            and cached.get("ath") is not None
+            and cached["ath"] >= cached["week52High"]
+        )
+        has_news = isinstance(cached.get("news"), list)
+        if has_chart and has_consistent_price_stats and has_news:
             cached["ticker"] = symbol
             return cached
         # Fall through to fresh fetch so chart_data is populated
@@ -87,10 +100,33 @@ async def get_quote(ticker: str):
         return JSONResponse(status_code=500, content={"error": f"Error processing {symbol}: {str(e)}"})
 
 
+@app.get('/api/chart/{ticker}')
+async def get_chart(ticker: str, range: str = "1y", interval: str = "1d"):
+    """Fetch dynamic chart data with specified range and interval."""
+    ticker_input = ticker
+    symbol = resolve_ticker(ticker_input)
+
+    try:
+        stock = yf.Ticker(symbol)
+        data = fetch_chart_data(stock, symbol, period=range, interval=interval)
+        return data
+    except Exception as e:
+        logger.error(f"Error fetching chart data for {symbol}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to retrieve chart for '{ticker_input}': {str(e)}"}
+        )
+
+
 @app.get('/api/news')
 async def get_news():
     cached = load_cache("news", max_age_minutes=55)
     if cached:
+        # Upgrade legacy cached payloads that incorrectly treated a missing
+        # optional GNews key as a failure despite Fed/BLS articles existing.
+        if cached.get("status") == "unavailable" and cached.get("articles"):
+            cached["status"] = "ok"
+            cached["reason"] = "free_feeds"
         return cached
     try:
         data = fetch_macro_news()
@@ -186,6 +222,72 @@ async def get_market_indices():
         logger.error(f"Market indices error: {e}")
         return []
 
+@app.get('/api/watchlist')
+async def get_watchlist():
+    return watchlist_service.get_watchlist()
+
+@app.get('/api/watchlist/quotes')
+async def get_watchlist_quotes():
+    return watchlist_service.get_watchlist_quotes()
+
+@app.post('/api/watchlist/{ticker}')
+async def add_to_watchlist(ticker: str):
+    return watchlist_service.add_to_watchlist(ticker)
+
+@app.delete('/api/watchlist/{ticker}')
+async def remove_from_watchlist(ticker: str):
+    return watchlist_service.remove_from_watchlist(ticker)
+
+from typing import Optional
+
+class ScreenerRequest(BaseModel):
+    min_market_cap: Optional[float] = None
+    max_pe: Optional[float] = None
+    min_roic: Optional[float] = None
+    min_rev_growth: Optional[float] = None
+    sector: Optional[str] = None
+    limit: int = 50
+
+@app.post('/api/screener')
+async def post_screener(req: ScreenerRequest):
+    try:
+        results = screener_service.get_screener_results(
+            min_market_cap=req.min_market_cap,
+            max_pe=req.max_pe,
+            min_roic=req.min_roic,
+            min_rev_growth=req.min_rev_growth,
+            sector=req.sector,
+            limit=req.limit
+        )
+        return {"data": results}
+    except Exception as e:
+        logger.error(f"Screener API error: {e}")
+        return {"data": [], "error": str(e)}
+
+class NewsSummaryRequest(BaseModel):
+    articles: list[dict]
+
+class CopilotRequest(BaseModel):
+    ticker: str
+    query: str
+    context: dict
+
+@app.post('/api/ai/news-summary')
+async def post_news_summary(req: NewsSummaryRequest):
+    try:
+        return ai_service.summarize_news(req.articles)
+    except Exception as e:
+        logger.error(f"AI news summary error: {e}")
+        return {"summary": ["Error generating summary.", str(e)], "sentiment": "Neutral", "takeaways": []}
+
+@app.post('/api/ai/ask-copilot')
+async def post_ask_copilot(req: CopilotRequest):
+    try:
+        response = ai_service.ask_copilot(req.ticker, req.query, req.context)
+        return {"response": response}
+    except Exception as e:
+        logger.error(f"AI copilot error: {e}")
+        return {"response": f"⚠️ Error: {e}"}
 
 if __name__ == '__main__':
     validate_config()

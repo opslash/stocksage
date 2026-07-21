@@ -1,0 +1,19 @@
+
+<!DOCTYPE html>
+<html>
+<body>
+<div id='chart' style='width:600px;height:400px;'></div>
+<script src='https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js'></script>
+<script>
+try {
+    const chart = LightweightCharts.createChart(document.getElementById('chart'));
+    const line = chart.addLineSeries();
+    line.setData([{time: '2023-01-01', value: 10}]);
+    line.setData([]);
+    console.log('SUCCESS');
+} catch(e) {
+    console.log('ERROR: ' + e.message);
+}
+</script>
+</body>
+</html>

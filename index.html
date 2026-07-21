@@ -30,9 +30,12 @@
       <div class="header-right" style="flex: 1; justify-content: center;">
         <nav class="nav-links" aria-label="Main navigation">
           <button class="nav-link active" id="nav-home" onclick="navigateTo('home')">Home</button>
+          <button class="nav-link" id="nav-watchlist" onclick="navigateTo('watchlist')">Watchlist</button>
           <button class="nav-link" id="nav-stock-analysis" onclick="navigateTo('stock-analysis')">Stock Analysis</button>
           <button class="nav-link" id="nav-valuation" onclick="navigateTo('valuation')">Valuation Engine</button>
-          <button class="nav-link" id="nav-news" onclick="navigateTo('news')">Market Intelligence</button>
+          <button class="nav-link" id="nav-company-news" onclick="navigateTo('company-news')">Company News</button>
+          <button class="nav-link" id="nav-news" onclick="navigateTo('news')">Macro News</button>
+          <a href="#screener" class="nav-link" id="nav-screener" onclick="navigateTo('screener'); return false;">Stock Screener</a>
         </nav>
       </div>
       
@@ -101,17 +104,38 @@
         </div>
       </div>
 
-      <!-- PAGE: ANALYSIS -->
+      <!-- PAGE: WATCHLIST -->
+      <div id="page-watchlist" class="page">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">My Watchlist</h2>
+              <div class="card-subtitle">Live quotes for your saved tickers</div>
+            </div>
+          </div>
+          <div id="watchlistGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; padding: 0 16px 16px;">
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE: STOCK ANALYSIS -->
       <div id="page-stock-analysis" class="page">
+        <!-- AI Stock Snapshot -->
+        <div id="ai-stock-snapshot" style="display:none;"></div>
         <!-- Hero -->
         <div class="card hero-card">
           <div class="pillar-score-badge" id="heroPillarBadge">0/8 ✓</div>
           <div class="hero-inner">
             <div class="hero-left">
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%;">
-                <h1 id="heroName" style="margin: 0;">Company Name</h1>
+              <div class="hero-title-row">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <h1 id="heroName" style="margin: 0;">Company Name</h1>
+                  <button id="heroWatchlistBtn" type="button" style="background:none; border:none; color:var(--text-muted); cursor:pointer; padding: 4px;" onclick="toggleWatchlist(AppState.currentTicker)" title="Toggle Watchlist">
+                    <svg id="heroWatchlistIcon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                  </button>
+                </div>
                 <!-- PDF Export Button -->
-                <button id="export-pdf-btn" class="export-pdf-btn" onclick="exportPDF()" title="Export 1-page PDF Report" style="background: #1e293b; border: 1px solid #334155; padding: 8px 16px; border-radius: 8px; font-weight: 500; color: #f8fafc; transition: all 0.2s ease; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 0.85rem; flex-shrink: 0;">
+                <button id="export-pdf-btn" class="export-pdf-btn" type="button" onclick="exportPDF()" title="Export a PDF report">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   📄 Export PDF
                 </button>
@@ -138,10 +162,25 @@
 
         <!-- Price Chart (TradingView Lightweight Charts) -->
         <div class="card" id="priceChartCard">
-          <div class="card-header">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
             <div>
               <h2 class="card-title">Price Chart</h2>
-              <div class="card-subtitle">1-Year Daily · Candlestick · SMA-50 · SMA-200 · Volume</div>
+              <div class="card-subtitle" id="chartSubtitle">1-Year Daily · Candlestick · SMA-50 · SMA-200 · Volume</div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+              <div class="indicator-bar" style="display: flex; gap: 6px;">
+                <button class="indicator-btn active" id="toggle-sma50" onclick="toggleIndicator('sma50')">SMA 50</button>
+                <button class="indicator-btn active" id="toggle-sma200" onclick="toggleIndicator('sma200')">SMA 200</button>
+                <button class="indicator-btn active" id="toggle-rsi" onclick="toggleIndicator('rsi')">RSI</button>
+              </div>
+              <div class="timeframe-bar">
+                <button class="timeframe-btn" id="tf-1D" onclick="fetchChartData('1d', '5m')">1D</button>
+                <button class="timeframe-btn" id="tf-1W" onclick="fetchChartData('5d', '15m')">1W</button>
+                <button class="timeframe-btn" id="tf-1M" onclick="fetchChartData('1mo', '1d')">1M</button>
+                <button class="timeframe-btn" id="tf-6M" onclick="fetchChartData('6mo', '1d')">6M</button>
+                <button class="timeframe-btn active" id="tf-1Y" onclick="fetchChartData('1y', '1d')">1Y</button>
+                <button class="timeframe-btn" id="tf-5Y" onclick="fetchChartData('5y', '1wk')">5Y</button>
+              </div>
             </div>
           </div>
           <div id="stockPriceChart" class="lw-chart-container"></div>
@@ -226,15 +265,132 @@
             <table><thead><tr id="sharesTableHead"></tr></thead><tbody id="sharesTableBody"></tbody></table>
           </div>
         </div>
+
+
+        <!-- AI Copilot Chat -->
+        <div class="card ai-card" id="ai-chat-widget" style="margin-top: 24px; display: none;">
+          <div class="ai-card-inner">
+            <div class="ai-header">
+              <div class="ai-title">✨ AI Copilot</div>
+            </div>
+            
+            <div class="chips" style="margin-bottom: 12px; font-size: 0.85rem;">
+              <div class="chip" onclick="askAiCopilot('What are the biggest debt risks?')">Debt Risks</div>
+              <div class="chip" onclick="askAiCopilot('Summarize recent earnings')">Recent Earnings</div>
+              <div class="chip" onclick="askAiCopilot('Why is the stock moving?')">Why is the stock moving?</div>
+            </div>
+            
+            <div class="ai-chat-box">
+              <div class="ai-chat-messages" id="aiChatMessages">
+                <!-- Chat messages go here -->
+                <div style="color: var(--text-muted); font-style: italic;">Ask a question to begin...</div>
+              </div>
+              <div class="ai-chat-input-area">
+                <input type="text" id="aiChatInput" class="search-input" placeholder="Ask AI about this stock..." onkeypress="if(event.key === 'Enter') askAiCopilot(this.value)">
+                <button class="search-btn" onclick="askAiCopilot(document.getElementById('aiChatInput').value)">Send</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
-      <!-- PAGE: NEWS -->
+      <!-- PAGE: COMPANY NEWS -->
+      <div id="page-company-news" class="page">
+        <div id="ai-news-summary-company" style="display:none;"></div>
+        <div class="card" id="stockNewsCard" style="display:none;">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Recent Company News</h2>
+              <div class="card-subtitle">Aggregated from multiple sources</div>
+            </div>
+          </div>
+          <div class="news-accordion" id="stockNewsContainer" style="padding: 0 16px 16px;"></div>
+        </div>
+        <div id="companyNewsEmptyState" style="padding: 40px 24px; text-align: center; color: var(--text-muted);">
+          Please load a stock to view its recent news.
+        </div>
+      </div>
+
+      <!-- PAGE: SCREENER -->
+      <div id="page-screener" class="page">
+        <div class="card" style="margin-bottom: 24px;">
+          <h2 class="card-title">Stock Screener</h2>
+          
+          <div class="chips" style="margin-top: 16px; margin-bottom: 8px;">
+            <div class="chip" onclick="applyScreenerPreset('deep_value')">💎 Deep Value</div>
+            <div class="chip" onclick="applyScreenerPreset('high_growth')">🚀 High-Growth Tech</div>
+            <div class="chip" onclick="applyScreenerPreset('quality_compounders')">👑 Quality Compounders</div>
+            <div class="chip" onclick="applyScreenerPreset('clear')">Clear Filters</div>
+          </div>
+
+          <div style="display: flex; gap: 16px; margin-top: 16px; flex-wrap: wrap;" id="screener-controls">
+            <!-- Filter inputs -->
+            <div style="flex: 1; min-width: 150px;">
+              <label style="display:block; margin-bottom:4px; font-size: 0.85rem; color: var(--text-muted)">Min Market Cap ($)</label>
+              <input type="number" id="scr-min-cap" value="1000000000" class="search-input" style="width: 100%; padding: 8px;">
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+              <label style="display:block; margin-bottom:4px; font-size: 0.85rem; color: var(--text-muted)">Max P/E Ratio</label>
+              <input type="number" id="scr-max-pe" value="50" class="search-input" style="width: 100%; padding: 8px;">
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+              <label style="display:block; margin-bottom:4px; font-size: 0.85rem; color: var(--text-muted)">Min ROIC (%)</label>
+              <input type="number" id="scr-min-roic" class="search-input" style="width: 100%; padding: 8px;" placeholder="Optional">
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+              <label style="display:block; margin-bottom:4px; font-size: 0.85rem; color: var(--text-muted)">Min Rev Growth (%)</label>
+              <input type="number" id="scr-min-rev" class="search-input" style="width: 100%; padding: 8px;" placeholder="Optional">
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+              <label style="display:block; margin-bottom:4px; font-size: 0.85rem; color: var(--text-muted)">Sector</label>
+              <select id="scr-sector" class="search-input" style="width: 100%; padding: 8px; background: rgba(255,255,255,0.05); color: #fff;">
+                <option value="">Any</option>
+                <option value="Technology Services">Technology Services</option>
+                <option value="Electronic Technology">Electronic Technology</option>
+                <option value="Health Technology">Health Technology</option>
+                <option value="Finance">Finance</option>
+                <option value="Consumer Non-Durables">Consumer Non-Durables</option>
+                <option value="Consumer Durables">Consumer Durables</option>
+                <option value="Energy Minerals">Energy Minerals</option>
+                <option value="Commercial Services">Commercial Services</option>
+              </select>
+            </div>
+            <div style="display: flex; align-items: flex-end;">
+              <button class="search-btn" style="padding: 8px 16px; width: auto; font-weight: bold; position: static;" onclick="fetchScreenerData()">Scan</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="screenerResultsCard" style="display: none; overflow-x: auto;">
+          <table class="data-table" id="screenerTable">
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Company Name</th>
+                <th style="text-align: right">Price</th>
+                <th style="text-align: right">Market Cap</th>
+                <th style="text-align: right">P/E (TTM)</th>
+                <th style="text-align: right">ROIC (5Y)</th>
+                <th style="text-align: right">Rev Growth (5Y)</th>
+                <th>Sector</th>
+              </tr>
+            </thead>
+            <tbody id="screenerTableBody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div> <!-- END PAGE: SCREENER -->
+
+      <!-- PAGE: MACRO NEWS -->
       <div id="page-news" class="page">
+        <div id="ai-news-summary-macro" style="display:none;"></div>
         <div class="card">
           <div class="card-header">
             <div>
-              <h2 class="card-title">Market Intelligence Terminal</h2>
-              <div class="card-subtitle">High-Impact Operational News Stream</div>
+              <h2 class="card-title">Macro News Terminal</h2>
+              <div class="card-subtitle">High-Impact Market & Economic News Stream</div>
             </div>
           </div>
           

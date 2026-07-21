@@ -1,17 +1,20 @@
-services:
-  - type: web
-    name: stocksage
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.0"
-      - key: GNEWS_API_KEY
+version: "1"
+projects:
+- name: My project
+  environments:
+  - name: Production
+    services:
+    - type: web
+      name: stocksage
+      runtime: python
+      repo: https://github.com/opslash/stocksage
+      plan: free
+      envVars:
+      - key: GEMINI_API_KEY
         sync: false
-      - key: DEBUG
-        value: "false"
-      - key: CACHE_TTL_MINUTES
-        value: "75"
-    healthCheckPath: /api/health
-    autoDeploy: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      region: oregon
+      buildCommand: pip install -r requirements.txt
+      startCommand: gunicorn -c gunicorn.conf.py main:app
+      autoDeployTrigger: commit

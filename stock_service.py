@@ -3,10 +3,12 @@ from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
 import json
+import traceback
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from config import logger, VALUATION_CONFIG
 from utils import safe_val, get_first_valid_val, safe_cagr, best_cagr, safe_mean, safe_median, safe_divide, normalize_shares_history
+from news_service import fetch_stock_news
 from price_statistics import get_price_statistics
 
 # Load peer configuration
@@ -20,48 +22,70 @@ except Exception as e:
 # ---------------------------------------------------------------------------
 # Chart Data (OHLCV + server-side SMAs)
 # ---------------------------------------------------------------------------
-def fetch_chart_data(t: yf.Ticker, ticker: str) -> dict:
-    """Fetch 1Y daily OHLCV and compute 50/200-day SMAs server-side."""
-    result = {"candlestick": [], "sma_50": [], "sma_200": [], "volume": []}
+def fetch_chart_data(t: yf.Ticker, ticker: str, period: str = "1y", interval: str = "1d") -> list:
+    """Fetch OHLCV and compute 50/200-period SMAs server-side."""
+    result = []
     try:
-        hist = t.history(period="1y", interval="1d")
+        hist = t.history(period=period, interval=interval)
         if hist.empty:
             return result
 
         hist.index = pd.to_datetime(hist.index)
-        if hist.index.tz is not None:
-            hist.index = hist.index.tz_convert(None)
-
-        hist["SMA_50"]  = hist["Close"].rolling(window=50,  min_periods=1).mean()
-        hist["SMA_200"] = hist["Close"].rolling(window=200, min_periods=1).mean()
+        
+        # Determine if interval is daily or higher (so SMAs make sense)
+        is_daily_or_higher = interval.endswith("d") or interval.endswith("wk") or interval.endswith("mo")
+        if is_daily_or_higher:
+            hist["SMA_50"]  = hist["Close"].rolling(window=50,  min_periods=1).mean()
+            hist["SMA_200"] = hist["Close"].rolling(window=200, min_periods=1).mean()
+        else:
+            hist["SMA_50"] = pd.NA
+            hist["SMA_200"] = pd.NA
+            
         hist["PrevClose"] = hist["Close"].shift(1)
 
+        # Calculate RSI (14) - Enabled for all timeframes
+        delta = hist["Close"].diff()
+        gain = delta.where(delta > 0, 0).ewm(alpha=1/14, min_periods=1, adjust=False).mean()
+        loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/14, min_periods=1, adjust=False).mean()
+        rs = gain / loss
+        hist["RSI_14"] = 100 - (100 / (1 + rs))
+
         for date, row in hist.iterrows():
-            ts = date.strftime("%Y-%m-%d")
+            # Lightweight Charts: 
+            # - Daily data should use string format "YYYY-MM-DD" to avoid timezone shifts.
+            # - Intraday data must use UNIX timestamps (seconds).
+            if is_daily_or_higher:
+                ts = date.strftime("%Y-%m-%d")
+            else:
+                ts = int(date.timestamp())
 
             if pd.notna(row["Open"]) and pd.notna(row["Close"]):
-                result["candlestick"].append({
+                ohlcv = {
                     "time":  ts,
                     "open":  round(float(row["Open"]),  4),
                     "high":  round(float(row["High"]),  4),
                     "low":   round(float(row["Low"]),   4),
-                    "close": round(float(row["Close"]), 4),
-                })
+                    "close": round(float(row["Close"]), 4)
+                }
+                
+                if pd.notna(row["SMA_50"]):
+                    ohlcv["sma_50"] = round(float(row["SMA_50"]), 4)
+                    
+                if pd.notna(row["SMA_200"]):
+                    ohlcv["sma_200"] = round(float(row["SMA_200"]), 4)
+                    
+                if "RSI_14" in row and pd.notna(row["RSI_14"]):
+                    ohlcv["rsi_14"] = round(float(row["RSI_14"]), 2)
+                    
+                if pd.notna(row["Volume"]):
+                    ohlcv["volume"] = int(row["Volume"])
+                    
+                result.append(ohlcv)
 
-            if pd.notna(row["SMA_50"]):
-                result["sma_50"].append({"time": ts, "value": round(float(row["SMA_50"]), 4)})
-
-            if pd.notna(row["SMA_200"]):
-                result["sma_200"].append({"time": ts, "value": round(float(row["SMA_200"]), 4)})
-
-            if pd.notna(row["Volume"]):
-                prev = float(row["PrevClose"]) if pd.notna(row["PrevClose"]) else float(row["Close"])
-                color = "#26a69a" if float(row["Close"]) >= prev else "#ef5350"
-                result["volume"].append({"time": ts, "value": int(row["Volume"]), "color": color})
-
+        return result
     except Exception as e:
         logger.error(f"Error fetching chart data for {ticker}: {e}")
-    return result
+        return result
 
 # ---------------------------------------------------------------------------
 # Peer Comparison
@@ -233,6 +257,9 @@ def _extract_ttm_financials(t: yf.Ticker, info: dict, lq: dict) -> dict:
         fcf_ttm = cfo_ttm - capex_ttm
 
     shares_outstanding = safe_val(info.get('sharesOutstanding'))
+    implied_shares = safe_divide(lq.get("marketCap"), lq.get("price"))
+    if implied_shares is not None and implied_shares > 0:
+        shares_outstanding = implied_shares
     if not shares_outstanding and not q_fin.empty:
         for col in q_fin.columns:
             sv = get_first_valid_val(q_fin, ['Diluted Average Shares'], col)
@@ -315,7 +342,7 @@ def _extract_shares_history(t: yf.Ticker) -> tuple:
     
     return sh, annual_shares_map
 
-def _extract_annual_historical(t: yf.Ticker, annual_shares_map: dict) -> list:
+def _extract_annual_historical(t: yf.Ticker, info: dict, annual_shares_map: dict) -> list:
     annual_data = []
     def get_5_years(df):
         if df is None or df.empty:
@@ -364,7 +391,15 @@ def _extract_annual_historical(t: yf.Ticker, annual_shares_map: dict) -> list:
 
             diluted_shares = annual_shares_map.get(year)
             if not diluted_shares:
-                diluted_shares = get_first_valid_val(a_fin, ['Diluted Average Shares', 'Basic Average Shares'], col)
+                try:
+                    shares = t.fast_info.get("shares")
+                except Exception:
+                    shares = None
+                if not shares:
+                    shares = info.get("sharesOutstanding")
+                if not shares:
+                    shares = get_first_valid_val(a_fin, ['Diluted Average Shares', 'Basic Average Shares'], col)
+                diluted_shares = shares
 
             pe = pfcf = None
             if year in annual_prices and ni and diluted_shares and diluted_shares > 0 and ni > 0:
@@ -403,18 +438,27 @@ def _extract_annual_historical(t: yf.Ticker, annual_shares_map: dict) -> list:
     return annual_data
 
 def _calculate_multi_year_stats(annual_data: list, t: yf.Ticker, info: dict, price_statistics: dict = None) -> dict:
-    stats = {}
+    # Price statistics are independent of statement availability (ETFs, young
+    # IPOs, and delisted tickers can legitimately have no annual statements).
+    stats = dict(price_statistics or {})
     if not annual_data:
         return stats
     
     years_avail = len(annual_data)
+    import math
+    import statistics
+    
     def avg_n(key, n):
         n = min(n, years_avail)
-        return safe_mean([x.get(key) for x in annual_data[:n]])
+        historical_series = [x.get(key) for x in annual_data[:n]]
+        clean_series = [x for x in historical_series if x is not None and safe_val(x) is not None and not math.isnan(float(x))]
+        return sum(clean_series) / len(clean_series) if clean_series else None
 
     def median_n(key, n):
         n = min(n, years_avail)
-        return safe_median([x.get(key) for x in annual_data[:n]])
+        historical_series = [x.get(key) for x in annual_data[:n]]
+        clean_series = [x for x in historical_series if x is not None and safe_val(x) is not None and not math.isnan(float(x))]
+        return statistics.median(clean_series) if clean_series else None
 
     for n in [1, 3, 5, 10]:
         cagr, actual = best_cagr(annual_data, "revenue", n)
@@ -472,8 +516,6 @@ def _calculate_multi_year_stats(annual_data: list, t: yf.Ticker, info: dict, pri
     stats["avg_ni_abs_5yr"]  = avg_n("netIncome", lb)
     stats["avg_fcf_abs_5yr"] = avg_n("fcf", lb)
 
-    stats.update(price_statistics or {})
-
     ltl_5yr_fcf_ratio = None
     try:
         a_bs_fresh = t.balance_sheet
@@ -519,39 +561,126 @@ def _calculate_8_pillar(stats: dict) -> tuple:
     score = sum(1 for p in pillars.values() if p.get("pass"))
     return pillars, score
 
-def _calculate_valuation_defaults(stats: dict) -> dict:
-    vd = {}
-    r_cagr = stats.get("revenue_cagr_5yr") or 0.0
-    vd["mid_revenue_growth"]  = r_cagr
-    vd["low_revenue_growth"]  = max(0.0, r_cagr - 0.03)
-    vd["high_revenue_growth"] = r_cagr + 0.03
-
-    avg_ni_m = stats.get("avg_netincome_margin_5yr") or 0.10
-    vd["mid_ni_margin"]  = avg_ni_m
-    vd["low_ni_margin"]  = max(0.0, avg_ni_m - 0.03)
-    vd["high_ni_margin"] = avg_ni_m + 0.03
-
-    avg_fcf_m = stats.get("avg_fcf_margin_5yr") or 0.08
-    avg_fcf_m_safe = max(0.0, avg_fcf_m)
-    vd["mid_fcf_margin"]  = avg_fcf_m_safe
-    vd["low_fcf_margin"]  = max(0.0, avg_fcf_m_safe - 0.03)
-    vd["high_fcf_margin"] = avg_fcf_m_safe + 0.03
+def _calculate_valuation_defaults(stats: dict, info: dict = None, ticker: str = "UNKNOWN") -> dict:
+    if info is None:
+        info = {}
+        
+    print(f"--- [DIAGNOSTIC LOG: {ticker}] ---")
+    print(f"Trailing PE: {info.get('trailingPE')}")
+    print(f"Forward PE: {info.get('forwardPE')}")
+    print(f"Revenue Growth: {info.get('revenueGrowth')}")
     
-    med_pe = stats.get("median_pe_5yr")
-    med_pfcf = stats.get("median_pfcf_5yr")
-    sh_cagr = stats.get("shares_cagr_5yr")
+    try:
+        vd = {}
+        r_cagr = safe_val(stats.get("revenue_cagr_5yr"))
+        
+        clamped_r_cagr = None
+        if r_cagr is not None:
+            clamped_r_cagr = min(r_cagr, 0.35) if r_cagr > 0 else r_cagr
+            
+        if clamped_r_cagr is None:
+            # Fallback if no revenue history
+            clamped_r_cagr = 0.05
 
-    vd["low_pe"]  = max(10.0, (med_pe or 20.0) - 5.0)
-    vd["mid_pe"]  = med_pe or 20.0
-    vd["high_pe"] = min(50.0, (med_pe or 20.0) + 5.0)
+        vd["mid_revenue_growth"]  = clamped_r_cagr
+        vd["low_revenue_growth"]  = max(0.0, clamped_r_cagr - 0.03)
+        vd["high_revenue_growth"] = clamped_r_cagr + 0.03
 
-    vd["low_pfcf"]  = max(10.0, (med_pfcf or 20.0) - 5.0)
-    vd["mid_pfcf"]  = med_pfcf or 20.0
-    vd["high_pfcf"] = min(50.0, (med_pfcf or 20.0) + 5.0)
+        avg_ni_m = safe_val(stats.get("avg_netincome_margin_5yr"))
+        if avg_ni_m is None or abs(avg_ni_m) > 1:
+            avg_ni_m = 0.10 # Fallback conservative NI margin
+            
+        vd["mid_ni_margin"]  = avg_ni_m
+        vd["low_ni_margin"]  = max(0.0, avg_ni_m - 0.03)
+        vd["high_ni_margin"] = avg_ni_m + 0.03
 
-    vd["shares_growth"] = min(0.05, max(-0.15, sh_cagr or 0.0))
-    vd["discount_rate"] = 0.09
-    return vd
+        avg_fcf_m = safe_val(stats.get("avg_fcf_margin_5yr"))
+        if avg_fcf_m is None or abs(avg_fcf_m) > 1:
+            avg_fcf_m = 0.08 # Fallback conservative FCF margin
+            
+        avg_fcf_m_safe = max(0.0, avg_fcf_m)
+        vd["mid_fcf_margin"]  = avg_fcf_m_safe
+        vd["low_fcf_margin"]  = max(0.0, avg_fcf_m_safe - 0.03)
+        vd["high_fcf_margin"] = avg_fcf_m_safe + 0.03
+        
+        med_pe = safe_val(stats.get("median_pe_5yr"))
+        if med_pe is None or med_pe <= 0:
+            med_pe = safe_val(info.get("trailingPE")) or safe_val(info.get("forwardPE")) or safe_val(info.get("peRatio"))
+        if med_pe is None or med_pe <= 0:
+            med_pe = 35.0
+
+        med_pfcf = safe_val(stats.get("median_pfcf_5yr"))
+        if med_pfcf is None or med_pfcf <= 0:
+            fcf_val = safe_val(info.get("freeCashflow")) or safe_val(info.get("operatingCashflow"))
+            mc_val = safe_val(info.get("marketCap"))
+            if fcf_val and mc_val and fcf_val > 0:
+                med_pfcf = mc_val / fcf_val
+        if med_pfcf is None or med_pfcf <= 0:
+            med_pfcf = 35.0
+            
+        med_pe = min(med_pe, 50.0)
+        med_pfcf = min(med_pfcf, 50.0)
+        
+        sh_cagr = stats.get("shares_cagr_5yr")
+
+        print(f"[DEBUG NVDA DEFAULTS] Growth: {clamped_r_cagr}, PE: {med_pe}, Margins: NI={avg_ni_m} FCF={avg_fcf_m_safe}")
+
+        vd["low_pe"]  = max(1.0, med_pe - 5.0)
+        vd["mid_pe"]  = med_pe
+        vd["high_pe"] = min(100.0, med_pe + 5.0)
+
+        vd["low_pfcf"]  = max(1.0, med_pfcf - 5.0)
+        vd["mid_pfcf"]  = med_pfcf
+        vd["high_pfcf"] = min(100.0, med_pfcf + 5.0)
+
+        # Scenario-specific capital-allocation assumptions.  Bear assumes more
+        # dilution and a higher required return; Bull assumes stronger buybacks
+        # and a lower required return.  The base starts with the company's own
+        # observed share CAGR (or a neutral 0% if unavailable).
+        base_shares_growth = safe_val(sh_cagr)
+        base_shares_growth = base_shares_growth if base_shares_growth is not None else 0.0
+        base_shares_growth = min(0.05, max(-0.15, base_shares_growth))
+        vd["low_shares_growth"] = min(0.10, base_shares_growth + 0.02)
+        vd["mid_shares_growth"] = base_shares_growth
+        vd["high_shares_growth"] = max(-0.20, base_shares_growth - 0.02)
+
+        # Required-return spread is deliberately ordered by scenario risk.
+        # Keep it bounded so a manually unusual company profile cannot create an
+        # invalid discounting denominator on the frontend.
+        base_discount_rate = 0.09
+        vd["low_discount_rate"] = min(0.25, base_discount_rate + 0.03)
+        vd["mid_discount_rate"] = base_discount_rate
+        vd["high_discount_rate"] = max(0.01, base_discount_rate - 0.02)
+        return vd
+    except Exception as e:
+        print(f"❌ CRITICAL ERROR IN VALUATION ENGINE FOR {ticker}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+        # RETURN SAFE GUARANTEED FALLBACK PAYLOAD INSTEAD OF EMPTY DICT
+        return {
+            "mid_revenue_growth": 0.15,
+            "low_revenue_growth": 0.10,
+            "high_revenue_growth": 0.20,
+            "mid_ni_margin": 0.15,
+            "low_ni_margin": 0.10,
+            "high_ni_margin": 0.20,
+            "mid_fcf_margin": 0.10,
+            "low_fcf_margin": 0.05,
+            "high_fcf_margin": 0.15,
+            "low_pe": 20.0,
+            "mid_pe": 25.0,
+            "high_pe": 35.0,
+            "low_pfcf": 20.0,
+            "mid_pfcf": 25.0,
+            "high_pfcf": 35.0,
+            "low_shares_growth": 0.02,
+            "mid_shares_growth": 0.00,
+            "high_shares_growth": -0.02,
+            "low_discount_rate": 0.12,
+            "mid_discount_rate": 0.09,
+            "high_discount_rate": 0.07,
+        }
 
 # ---------------------------------------------------------------------------
 # Main Orchestrator
@@ -565,7 +694,7 @@ def fetch_stock_data(ticker: str) -> dict:
     logger.info(f"Fetching stock data for {ticker}")
     t = make_ticker(ticker)
 
-    with ThreadPoolExecutor(max_workers=7) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         futures = [
             executor.submit(lambda: t.info),
             executor.submit(lambda: t.quarterly_financials),
@@ -577,6 +706,7 @@ def fetch_stock_data(ticker: str) -> dict:
         # Retain this one frame so 52-week, YTD, and lifetime values cannot
         # accidentally be derived from different adjustment modes.
         history_future = executor.submit(lambda: t.history(period="max", auto_adjust=True))
+        news_future = executor.submit(lambda: fetch_stock_news(ticker))
         for future in as_completed(futures):
             try: future.result()
             except Exception: pass
@@ -594,6 +724,7 @@ def fetch_stock_data(ticker: str) -> dict:
         "data_years_available": 0,
         "chart_data": fetch_chart_data(t, ticker),
         "price_statistics": {},
+        "news": [],
     }
 
     try:
@@ -614,7 +745,7 @@ def fetch_stock_data(ticker: str) -> dict:
         sh, annual_shares_map = _extract_shares_history(t)
         result["shares_outstanding_history"] = sh
         
-        annual_data = _extract_annual_historical(t, annual_shares_map)
+        annual_data = _extract_annual_historical(t, info, annual_shares_map)
         result["annual_historical"] = annual_data
         result["data_years_available"] = len(annual_data)
         
@@ -625,8 +756,13 @@ def fetch_stock_data(ticker: str) -> dict:
         result["eight_pillar"] = pillars
         result["pillar_score"] = score
         
-        result["valuation_defaults"] = _calculate_valuation_defaults(stats)
-        
+        result["valuation_defaults"] = _calculate_valuation_defaults(stats, info, ticker)
+        try:
+            result["news"] = news_future.result()
+        except Exception as e:
+            logger.warning(f"Stock news unavailable for {ticker}: {e}")
+
+        return result
     except Exception as e:
         logger.error(f"Error orchestrating fetch for {ticker}: {e}")
 
@@ -656,6 +792,7 @@ def flatten_response(d: dict) -> dict:
     flat["ytdLow"]            = price_stats.get("ytdLow")
     flat["priceStatisticsAsOf"] = price_stats.get("as_of")
     flat["priceStatisticsAdjusted"] = price_stats.get("adjusted", True)
+    flat["priceStatisticsVersion"] = price_stats.get("version")
     flat["sector"]            = lq.get("sector")
     flat["industry"]          = lq.get("industry")
     flat["dividendYield"]     = lq.get("dividendYield")
@@ -720,5 +857,7 @@ def flatten_response(d: dict) -> dict:
 
     flat["ath"] = stats.get("ath")
     flat["valuation_defaults"] = d.get("valuation_defaults") or {}
+    flat["valuationDefaultsVersion"] = 2
     flat["chart_data"]     = d.get("chart_data") or {}
+    flat["news"]           = d.get("news", [])
     return flat

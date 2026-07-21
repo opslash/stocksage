@@ -42,7 +42,7 @@ def get_price_statistics(history: pd.DataFrame) -> Dict[str, Any]:
         "week52High": None, "week52Low": None,
         "ath": None, "atl": None,
         "ytdHigh": None, "ytdLow": None,
-        "as_of": None, "adjusted": True,
+        "as_of": None, "adjusted": True, "version": 2,
     }
     if history is None or history.empty:
         return empty
@@ -59,13 +59,21 @@ def get_price_statistics(history: pd.DataFrame) -> Dict[str, Any]:
     trailing_year = frame.loc[frame.index >= as_of - pd.Timedelta(days=365)]
     ytd = frame.loc[frame.index >= pd.Timestamp(year=as_of.year, month=1, day=1)]
 
+    week52_high = _extreme(trailing_year, "High", "max")
+    ath = _extreme(frame, "High", "max")
+    # The trailing window is a subset of the full history. Preserve that
+    # invariant even if an upstream dataframe has an unusual index/order.
+    if week52_high is not None and (ath is None or ath < week52_high):
+        ath = week52_high
+
     return {
-        "week52High": _extreme(trailing_year, "High", "max"),
+        "week52High": week52_high,
         "week52Low": _extreme(trailing_year, "Low", "min"),
-        "ath": _extreme(frame, "High", "max"),
+        "ath": ath,
         "atl": _extreme(frame, "Low", "min"),
         "ytdHigh": _extreme(ytd, "High", "max"),
         "ytdLow": _extreme(ytd, "Low", "min"),
         "as_of": as_of.date().isoformat(),
         "adjusted": True,
+        "version": 2,
     }

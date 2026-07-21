@@ -19,6 +19,15 @@ def test_price_statistics_use_adjusted_history_and_recent_windows():
     assert result["adjusted"] is True
 
 
+def test_all_time_high_is_never_below_52_week_high():
+    history = pd.DataFrame(
+        {"High": [100, 125], "Low": [80, 90]},
+        index=pd.to_datetime(["2025-07-01", "2026-07-01"]),
+    )
+    result = get_price_statistics(history)
+    assert result["ath"] >= result["week52High"]
+
+
 def test_price_statistics_supports_young_ipo_history():
     history = pd.DataFrame(
         {"High": [11, 13], "Low": [8, 9]},
