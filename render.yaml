@@ -6,7 +6,7 @@ projects:
     services:
     - type: web
       name: stocksage
-      runtime: python
+      runtime: docker
       repo: https://github.com/opslash/stocksage
       plan: free
       envVars:
@@ -15,6 +15,4 @@ projects:
       - key: JWT_SECRET_KEY
         generateValue: true
       region: oregon
-      buildCommand: pip install -r requirements.txt
-      startCommand: gunicorn -c gunicorn.conf.py main:app
       autoDeployTrigger: commit
