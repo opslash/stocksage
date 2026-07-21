@@ -286,11 +286,16 @@
         return;
       }
 
-      const dateObj = new Date(param.time * 1000);
-      const yyyy = dateObj.getUTCFullYear();
-      const mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
-      const dd = String(dateObj.getUTCDate()).padStart(2, '0');
-      const dateStr = `${yyyy}-${mm}-${dd}`;
+      let dateStr = "";
+      if (typeof param.time === "string") {
+        dateStr = param.time;
+      } else {
+        const dateObj = new Date(param.time * 1000);
+        const yyyy = dateObj.getUTCFullYear();
+        const mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+        const dd = String(dateObj.getUTCDate()).padStart(2, '0');
+        dateStr = `${yyyy}-${mm}-${dd}`;
+      }
       
       hudDate.innerHTML = `Date: ${dateStr}`;
       hudDate.style.color = "#e2e8f0";
@@ -298,8 +303,10 @@
       const mainData = param.seriesData.get(STATE.mainSeries);
       if (mainData) {
         if (mainData.open !== undefined) {
-          hudOHLC.style.display = "block";
-          hudOHLC.innerHTML = `O: <span style="color:#2196F3">${mainData.open.toFixed(2)}</span> H: <span style="color:#4CAF50">${mainData.high.toFixed(2)}</span> L: <span style="color:#F44336">${mainData.low.toFixed(2)}</span> C: <span style="color:#FF9800">${mainData.close.toFixed(2)}</span>`;
+          hudOHLC.style.display = "flex";
+          hudOHLC.style.flexWrap = "wrap";
+          hudOHLC.style.gap = "8px";
+          hudOHLC.innerHTML = `<span>O: <span style="color:#2196F3">${mainData.open.toFixed(2)}</span></span> <span>H: <span style="color:#4CAF50">${mainData.high.toFixed(2)}</span></span> <span>L: <span style="color:#F44336">${mainData.low.toFixed(2)}</span></span> <span>C: <span style="color:#FF9800">${mainData.close.toFixed(2)}</span></span>`;
         } else if (mainData.value !== undefined) {
           hudOHLC.style.display = "block";
           hudOHLC.innerHTML = `C: <span style="color:#FF9800">${mainData.value.toFixed(2)}</span>`;
@@ -407,6 +414,36 @@
   function updateIndicators() {
     const d = STATE.rawData;
 
+    // --- Dynamic Pane Layout ---
+    const activeOscillators = [];
+    if (STATE.indicators.rsi.visible) activeOscillators.push("rsi");
+    if (STATE.indicators.macd.visible) activeOscillators.push("macd");
+    if (STATE.indicators.stochrsi.visible) activeOscillators.push("stochrsi");
+
+    const numOsc = activeOscillators.length;
+    const oscHeight = 0.22; // 22% per oscillator
+    const totalOscHeight = numOsc * oscHeight;
+    const mainBottom = totalOscHeight;
+    const volHeight = 0.12;
+
+    STATE.chart.priceScale("right").applyOptions({
+        scaleMargins: { top: 0.05, bottom: mainBottom + 0.02 },
+    });
+    
+    if (STATE.volumeSeries) {
+        STATE.volumeSeries.priceScale().applyOptions({
+            scaleMargins: { top: 1.0 - mainBottom - volHeight, bottom: mainBottom },
+        });
+    }
+
+    const getOscScaleMargins = (key) => {
+        const idx = activeOscillators.indexOf(key);
+        const top = 1.0 - (numOsc - idx) * oscHeight;
+        const bottom = (numOsc - idx - 1) * oscHeight;
+        return { top: top + 0.02, bottom: bottom };
+    };
+    // ---------------------------
+
     // Helper to safely remove series
     const safeRemove = (seriesName) => {
       if (STATE.indicators[seriesName].series) {
@@ -505,7 +542,7 @@
         crosshairMarkerVisible: false,
       });
       STATE.indicators.rsi.series.priceScale().applyOptions({
-        scaleMargins: { top: 0.82, bottom: 0 },
+        scaleMargins: getOscScaleMargins("rsi"),
       });
       STATE.indicators.rsi.series.setData(data);
     }
@@ -536,15 +573,17 @@
         lineWidth: 1,
         crosshairMarkerVisible: false,
       });
-      STATE.indicators.bb.seriesUpper.setData(
-        data.map((x) => ({ time: x.time, value: x.upper }))
-      );
-      STATE.indicators.bb.seriesLower.setData(
-        data.map((x) => ({ time: x.time, value: x.lower }))
-      );
-      STATE.indicators.bb.seriesBasis.setData(
-        data.map((x) => ({ time: x.time, value: x.basis }))
-      );
+      if (data.length > 0) {
+        STATE.indicators.bb.seriesUpper.setData(
+          data.map((x) => ({ time: x.time, value: x.upper }))
+        );
+        STATE.indicators.bb.seriesLower.setData(
+          data.map((x) => ({ time: x.time, value: x.lower }))
+        );
+        STATE.indicators.bb.seriesBasis.setData(
+          data.map((x) => ({ time: x.time, value: x.basis }))
+        );
+      }
     }
 
     // MACD
@@ -576,7 +615,7 @@
 
       STATE.indicators.macd.seriesMacd
         .priceScale()
-        .applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+        .applyOptions({ scaleMargins: getOscScaleMargins("macd") });
 
       STATE.indicators.macd.seriesMacd.setData(
         data.map((x) => ({ time: x.time, value: x.macd }))
@@ -617,7 +656,7 @@
 
       STATE.indicators.stochrsi.seriesK
         .priceScale()
-        .applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+        .applyOptions({ scaleMargins: getOscScaleMargins("stochrsi") });
 
       STATE.indicators.stochrsi.seriesK.setData(
         data.map((x) => ({ time: x.time, value: x.k }))

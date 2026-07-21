@@ -596,7 +596,7 @@
             <div id="chartToolbar" style="display: flex; gap: 10px; padding: 10px 16px; background: var(--surface2); border: 1px solid var(--border-color); border-bottom: none; border-radius: 12px 12px 0 0; align-items: center; flex-wrap: wrap;">
               
               <!-- Chart Type Switcher -->
-              <select id="chartTypeSelect" onchange="if(window.chartActions) window.chartActions.setChartType(this.value)" style="background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border-bright); border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; outline: none; cursor: pointer;">
+              <select id="chartTypeSelect" onchange="if(window.chartActions) window.chartActions.setChartType(this.value)" style="background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; outline: none; cursor: pointer; font-family: 'JetBrains Mono', monospace;">
                 <option value="Candlestick">Candles</option>
                 <option value="Line">Line</option>
                 <option value="Area">Area</option>
@@ -1443,11 +1443,11 @@
 
     <!-- JS Modules — load order matters: utilities first, app last -->
     <script src="static/js/formatters.js"></script>
-    <script src="static/js/chart_engine.js?v=3"></script>
+    <script src="static/js/chart_engine.js?v=4"></script>
     <script src="static/js/comps_matrix.js"></script>
     <script src="static/js/pdf_export.js"></script>
     <script src="static/js/auth.js"></script>
     <script src="static/js/screener.js"></script>
-    <script src="static/js/app.js?v=3"></script>
+    <script src="static/js/app.js?v=4"></script>
   </body>
 </html>
