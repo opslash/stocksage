@@ -1,16 +1,19 @@
 import os
 import json
 import logging
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 logger = logging.getLogger(__name__)
 
-# Configure Gemini
-api_key = os.getenv("GEMINI_API_KEY")
-if api_key:
-    genai.configure(api_key=api_key)
-else:
+from config import settings
+
+# Configure Gemini Client
+api_key = settings.GEMINI_API_KEY
+if not api_key:
     logger.warning("GEMINI_API_KEY not found in environment. AI features will be disabled or use fallback mode.")
+else:
+    client = genai.Client(api_key=api_key)
 
 def summarize_news(articles: list[dict]) -> dict:
     """
@@ -53,11 +56,12 @@ def summarize_news(articles: list[dict]) -> dict:
         }}
         """
         
-        model = genai.GenerativeModel('gemini-flash-lite-latest')
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
                 response_mime_type="application/json",
+                temperature=0.2,
             )
         )
         
@@ -93,8 +97,13 @@ def ask_copilot(ticker: str, query: str, context: dict) -> str:
         {json.dumps(context, indent=2)}
         """
         
-        model = genai.GenerativeModel('gemini-flash-lite-latest', system_instruction=sys_prompt)
-        response = model.generate_content(user_prompt)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=sys_prompt,
+            )
+        )
         return response.text
     except Exception as e:
         logger.error(f"Error calling Gemini for copilot chat: {e}")

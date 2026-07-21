@@ -40,7 +40,16 @@
       </div>
       
       <!-- Right: Status -->
-      <div class="header-status">
+      <div class="header-status" style="display: flex; align-items: center; gap: 15px;">
+        <div id="authContainer">
+           <button id="btnOpenAuth" class="btn btn-sm btn-outline" onclick="openAuthModal()">Sign In</button>
+           <div id="userProfile" style="display:none; position:relative;">
+             <button class="btn btn-sm" id="btnProfile" onclick="toggleProfileMenu()">👤 <span id="profileName"></span></button>
+             <div id="profileMenu" class="dropdown-content" style="display:none; position:absolute; right:0; top:35px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:6px; padding:8px; min-width:120px; z-index:100;">
+               <a href="#" onclick="logoutUser(); return false;" style="color:var(--text-color); text-decoration:none; display:block; padding:4px 8px;">Logout</a>
+             </div>
+           </div>
+        </div>
         <div class="status-area">
           <div id="statusDot" class="status-dot"></div>
           <span id="statusText">No Data</span>
@@ -71,6 +80,7 @@
               <button type="submit" class="search-btn" style="width: 40px; height: 40px; right: 8px;" aria-label="Search">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/></svg>
               </button>
+              <div id="searchAutocomplete" class="autocomplete-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--card-bg); border:1px solid var(--border-color); border-radius:6px; margin-top:4px; z-index:1000; max-height:300px; overflow-y:auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"></div>
             </form>
           </div>
 
@@ -156,6 +166,37 @@
               <div class="mini-stat"><div class="mini-stat-label">Volume</div><div class="mini-stat-value mono" id="heroVol">—</div></div>
               <div class="mini-stat"><div class="mini-stat-label">52W High</div><div class="mini-stat-value mono" id="hero52H">—</div></div>
               <div class="mini-stat"><div class="mini-stat-label">All-Time High</div><div class="mini-stat-value mono" id="heroATH">—</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analyst Targets Widget -->
+        <div class="card analyst-targets-card" id="analystTargetsCard" style="display:none; margin-top: 24px;">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Analyst Targets & Consensus</h2>
+              <div class="card-subtitle">Wall Street 12-month price targets</div>
+            </div>
+            <div id="analyst-badge" class="badge" style="font-size: 14px; padding: 6px 12px; background: var(--surface2); color: var(--text-muted);">Awaiting Data</div>
+          </div>
+          
+          <div style="padding: 24px; position: relative; margin-top: 16px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-muted);">
+              <span id="target-low-label">Low</span>
+              <span id="target-avg-label">Average</span>
+              <span id="target-high-label">High</span>
+            </div>
+            
+            <!-- The gauge bar -->
+            <div style="height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--danger) 0%, var(--warning) 50%, var(--success) 100%); position: relative;">
+              <!-- Current Price Marker -->
+              <div id="target-current-marker" style="position: absolute; top: -8px; left: 50%; width: 4px; height: 28px; background: var(--text-main); border: 2px solid var(--surface); border-radius: 4px; transform: translateX(-50%); box-shadow: 0 0 8px rgba(0,0,0,0.5); z-index: 2;"></div>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; margin-top: 12px; font-family: var(--font-mono); font-size: 1.1rem; color: var(--text-main);">
+              <span id="target-low-val">$0.00</span>
+              <span id="target-avg-val" style="font-weight:bold;">$0.00</span>
+              <span id="target-high-val">$0.00</span>
             </div>
           </div>
         </div>
@@ -362,24 +403,31 @@
           </div>
         </div>
 
-        <div class="card" id="screenerResultsCard" style="display: none; overflow-x: auto;">
-          <table class="data-table" id="screenerTable">
-            <thead>
-              <tr>
-                <th>Ticker</th>
-                <th>Company Name</th>
-                <th style="text-align: right">Price</th>
-                <th style="text-align: right">Market Cap</th>
-                <th style="text-align: right">P/E (TTM)</th>
-                <th style="text-align: right">ROIC (5Y)</th>
-                <th style="text-align: right">Rev Growth (5Y)</th>
-                <th>Sector</th>
-              </tr>
-            </thead>
-            <tbody id="screenerTableBody">
-              <!-- Rendered via JS -->
-            </tbody>
-          </table>
+        <div class="panel">
+          <div class="table-responsive">
+            <table class="table data-table" id="screenerTable">
+              <thead>
+                <tr>
+                  <th onclick="sortScreener('ticker')" style="cursor:pointer;">Ticker ↕</th>
+                  <th onclick="sortScreener('name')" style="cursor:pointer;">Company ↕</th>
+                  <th onclick="sortScreener('sector')" style="cursor:pointer;">Sector ↕</th>
+                  <th onclick="sortScreener('price')" style="cursor:pointer; text-align:right;">Price ↕</th>
+                  <th onclick="sortScreener('market_cap')" style="cursor:pointer; text-align:right;">Market Cap ↕</th>
+                  <th onclick="sortScreener('pe')" style="cursor:pointer; text-align:right;">P/E ↕</th>
+                  <th onclick="sortScreener('roic')" style="cursor:pointer; text-align:right;">ROIC ↕</th>
+                  <th onclick="sortScreener('rev_growth')" style="cursor:pointer; text-align:right;">Rev Growth (YoY) ↕</th>
+                </tr>
+              </thead>
+              <tbody id="screenerResults">
+                <tr><td colspan="8" class="text-center text-muted" style="padding:40px;">Select filters and click "Run Screen" to find stocks.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="screenerPagination" style="display:none; justify-content:space-between; align-items:center; margin-top:15px; padding:10px 0;">
+            <button class="btn btn-sm btn-outline" id="btnScreenerPrev" onclick="screenerPrevPage()">Previous</button>
+            <span id="screenerPageInfo" class="text-muted" style="font-size:0.9em;">Page 1 of 1</span>
+            <button class="btn btn-sm btn-outline" id="btnScreenerNext" onclick="screenerNextPage()">Next</button>
+          </div>
         </div>
       </div> <!-- END PAGE: SCREENER -->
 
@@ -451,6 +499,62 @@
 
           <div class="val-results" id="valResults"></div>
         </div>
+
+        <!-- 2-Stage DCF Calculator -->
+        <div class="card dcf-calculator-card" style="margin-top: 24px;">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">2-Stage DCF Calculator</h2>
+              <div class="card-subtitle">Real-time fair value based on Free Cash Flow projections</div>
+            </div>
+            <div id="dcf-badge" class="badge" style="font-size: 14px; padding: 6px 12px; background: var(--surface2); color: var(--text-muted);">Awaiting Data</div>
+          </div>
+          
+          <div class="dashboard-grid" style="grid-template-columns: 1fr 1fr; align-items: start;">
+            <!-- Inputs -->
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+              <div class="dcf-input-group">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                  <label class="control-label">Short-term FCF Growth (Yrs 1-5)</label>
+                  <span id="dcf-st-growth-val" class="mono" style="color: var(--primary)">8.0%</span>
+                </div>
+                <input type="range" id="dcf-st-growth" min="-20" max="50" step="0.5" value="8.0" oninput="updateDcfVal('st-growth'); calculateDCF();">
+              </div>
+              
+              <div class="dcf-input-group">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                  <label class="control-label">Terminal Growth Rate</label>
+                  <span id="dcf-term-growth-val" class="mono" style="color: var(--primary)">2.5%</span>
+                </div>
+                <input type="range" id="dcf-term-growth" min="0" max="6" step="0.1" value="2.5" oninput="updateDcfVal('term-growth'); calculateDCF();">
+              </div>
+
+              <div class="dcf-input-group">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                  <label class="control-label">Discount Rate (WACC)</label>
+                  <span id="dcf-wacc-val" class="mono" style="color: var(--primary)">9.0%</span>
+                </div>
+                <input type="range" id="dcf-wacc" min="4" max="20" step="0.1" value="9.0" oninput="updateDcfVal('wacc'); calculateDCF();">
+              </div>
+            </div>
+            
+            <!-- Output Gauge / Display -->
+            <div class="dcf-results" style="background: var(--surface2); padding: 24px; border-radius: 12px; border: 1px solid var(--border); text-align: center;">
+              <div style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 8px;">Intrinsic Fair Value / Share</div>
+              <div id="dcf-fair-value" class="mono" style="font-size: 2.5rem; font-weight: bold; color: var(--text-main); margin-bottom: 4px;">$0.00</div>
+              <div style="display: flex; justify-content: center; gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-bright);">
+                <div>
+                  <div style="font-size: 0.8rem; color: var(--text-muted);">Current Price</div>
+                  <div id="dcf-current-price" class="mono" style="font-size: 1.1rem; color: var(--text-main);">$0.00</div>
+                </div>
+                <div>
+                  <div style="font-size: 0.8rem; color: var(--text-muted);">Upside/Downside</div>
+                  <div id="dcf-upside" class="mono" style="font-size: 1.1rem; color: var(--success);">+0.0%</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -477,11 +581,34 @@
 
   <div id="pdf-export-template" style="display: none; width: 800px !important; max-width: 800px !important; background: #ffffff !important; color: #0f172a !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important; box-sizing: border-box !important; margin: 0 auto !important; padding: 32px !important;"></div>
 
+  <!-- Auth Modal -->
+  <div id="authModal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index:2000; align-items:center; justify-content:center;">
+    <div class="modal-content card" style="width:100%; max-width:400px; padding:30px; position:relative; background: var(--bg2); border: 1px solid var(--border); box-shadow: 0 10px 40px rgba(0,0,0,0.8); border-radius: 16px;">
+      <span class="close" onclick="closeAuthModal()" style="position:absolute; top:15px; right:20px; font-size:24px; cursor:pointer;">&times;</span>
+      <h2 id="authTitle" style="margin-top:0;">Sign In</h2>
+      <form id="authForm" onsubmit="submitAuth(event)">
+        <div style="margin-bottom:15px;">
+          <label>Username</label>
+          <input type="text" id="authUsername" required class="search-input" style="width:100%; padding:10px;">
+        </div>
+        <div style="margin-bottom:20px;">
+          <label>Password</label>
+          <input type="password" id="authPassword" required class="search-input" style="width:100%; padding:10px;">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%; padding:12px;" id="authSubmitBtn">Login</button>
+      </form>
+      <div style="margin-top:15px; text-align:center; font-size:0.9em;">
+        <span id="authToggleText">Don't have an account? <a href="#" onclick="toggleAuthMode(); return false;">Register</a></span>
+      </div>
+      <div id="authError" class="text-danger" style="margin-top:10px; text-align:center; display:none;"></div>
+    </div>
+  </div>
+
   <!-- JS Modules — load order matters: utilities first, app last -->
   <script src="static/js/formatters.js"></script>
   <script src="static/js/chart_engine.js"></script>
   <script src="static/js/comps_matrix.js"></script>
   <script src="static/js/pdf_export.js"></script>
-  <script src="static/js/app.js"></script>
+  <script src="static/js/app.js?v=2"></script>
 </body>
 </html>

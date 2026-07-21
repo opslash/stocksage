@@ -63,11 +63,17 @@ window.exportPDF = async function () {
     
     const now = new Date();
     headerDiv.innerHTML = `
-      <h1 style="margin: 0; font-size: 24px; color: #0f172a;">${stock.name || 'Stock'} (${stock.ticker || 'N/A'}) - Research Report</h1>
-      <p style="margin: 6px 0 0; color: #475569; font-size: 14px;">
-        Price: $${stock.price || 'N/A'} | Market Cap: $${fmt(stock.marketCap, 'currency').replace('$', '')} | 
-        Generated: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}
-      </p>
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; font-family: 'Inter', sans-serif;">
+        <div>
+          <h1 style="margin: 0; font-size: 28px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px;">${stock.ticker || 'N/A'}</h1>
+          <h2 style="margin: 4px 0 0; font-size: 16px; font-weight: 500; color: #475569;">${stock.name || 'Stock'} Research Report</h2>
+        </div>
+        <div style="text-align: right; color: #64748b; font-size: 13px;">
+          <div style="font-weight: 600; color: #0f172a; font-size: 18px;">$${stock.price || 'N/A'}</div>
+          <div>Mkt Cap: $${fmt(stock.marketCap, 'currency').replace('$', '')}</div>
+          <div style="margin-top: 4px;">${now.toLocaleDateString()}</div>
+        </div>
+      </div>
     `;
     container.insertBefore(headerDiv, container.firstChild);
 

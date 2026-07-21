@@ -73,6 +73,11 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Fetch Helper ──────────────────────────────────
 async function fetchWithRetry(url, options = {}, retries = 3) {
   let attempt = 0;
+  options.headers = options.headers || {};
+  const token = localStorage.getItem('jwt_token');
+  if (token) {
+    options.headers['Authorization'] = `Bearer ${token}`;
+  }
   while (attempt <= retries) {
     try {
       const res = await fetch(url, options);
@@ -106,7 +111,7 @@ async function fetchMarketIndices() {
         return `
           <div class="snapshot-card">
             <div class="snapshot-label">${idx.name}</div>
-            <div class="snapshot-val ${cls}">${fmt(idx.price, 'price')} <span style="font-size:0.8em; opacity:0.8;">${sign}${fmt(idx.change/100, 'percent')}</span></div>
+            <div class="snapshot-val ${cls}">${fmt(idx.price, 'price')} <span style="font-size:0.8em; opacity:0.8;">${fmt(idx.change/100, 'percent')}</span></div>
           </div>
         `;
       }).join('');
@@ -137,9 +142,9 @@ function navigateTo(pageId) {
   if (pageId === 'watchlist') renderWatchlistDashboard();
   // Render screener if needed
   if (pageId === 'screener') {
-    const tableBody = document.getElementById('screenerTableBody');
-    if (!tableBody || !tableBody.innerHTML.trim()) {
-      fetchScreenerData();
+    const tbody = document.getElementById('screenerResults');
+    if (!tbody || tbody.innerHTML.includes('Select filters')) {
+      // Don't auto-fetch, let user run it.
     }
   }
 }
@@ -169,7 +174,7 @@ window.fetchScreenerData = async function() {
   const sector = document.getElementById('scr-sector').value;
   
   const payload = {
-    limit: 50
+    limit: 200 // Increased for pagination
   };
   
   if (minCap) payload.min_market_cap = parseFloat(minCap);
@@ -194,20 +199,47 @@ window.fetchScreenerData = async function() {
   }
 };
 
+let screenerData = [];
+let screenerPage = 1;
+const screenerItemsPerPage = 15;
+let screenerSortCol = '';
+let screenerSortAsc = true;
+
 window.renderScreener = function(results) {
-  const card = document.getElementById('screenerResultsCard');
-  const tbody = document.getElementById('screenerTableBody');
-  if (!card || !tbody) return;
+  if (results) {
+    screenerData = results;
+    screenerPage = 1;
+  }
   
-  if (!results.length) {
+  const tbody = document.getElementById('screenerResults');
+  const pagination = document.getElementById('screenerPagination');
+  if (!tbody) return;
+  
+  if (!screenerData.length) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 20px; color: var(--text-muted)">No stocks match your criteria.</td></tr>';
-    card.style.display = 'block';
+    if (pagination) pagination.style.display = 'none';
     return;
   }
   
-  tbody.innerHTML = results.map(row => {
-    const cls = colorCls(row.change);
-    const sign = row.change > 0 ? '+' : '';
+  // Sort
+  if (screenerSortCol) {
+    screenerData.sort((a, b) => {
+      let va = a[screenerSortCol] ?? '';
+      let vb = b[screenerSortCol] ?? '';
+      if (typeof va === 'string') va = va.toLowerCase();
+      if (typeof vb === 'string') vb = vb.toLowerCase();
+      if (va < vb) return screenerSortAsc ? -1 : 1;
+      if (va > vb) return screenerSortAsc ? 1 : -1;
+      return 0;
+    });
+  }
+  
+  // Paginate
+  const totalPages = Math.ceil(screenerData.length / screenerItemsPerPage);
+  const startIdx = (screenerPage - 1) * screenerItemsPerPage;
+  const pageData = screenerData.slice(startIdx, startIdx + screenerItemsPerPage);
+  
+  tbody.innerHTML = pageData.map(row => {
     const tickerStr = row.ticker ? (row.ticker.includes(':') ? row.ticker.split(':')[1] : row.ticker) : row.name;
     const clickHandler = `searchTicker('${tickerStr}')`;
     
@@ -215,17 +247,58 @@ window.renderScreener = function(results) {
       <tr style="cursor: pointer" onclick="${clickHandler}">
         <td style="font-weight: bold; color: var(--accent)">${tickerStr}</td>
         <td style="color: var(--text-muted)">${row.name || '-'}</td>
+        <td>${row.sector || '-'}</td>
         <td style="text-align: right">${fmt(row.close, 'price')}</td>
         <td style="text-align: right">${fmt(row.market_cap_basic, 'currency')}</td>
         <td style="text-align: right">${fmt(row.price_earnings_ttm, 'multiple')}</td>
-        <td style="text-align: right">${fmt(row.return_on_invested_capital / 100, 'percent')}</td>
-        <td style="text-align: right">${fmt(row.total_revenue_yoy_growth_ttm / 100, 'percent')}</td>
-        <td>${row.sector || '-'}</td>
+        <td style="text-align: right">${fmt(row.return_on_invested_capital ? row.return_on_invested_capital / 100 : null, 'percent')}</td>
+        <td style="text-align: right">${fmt(row.total_revenue_yoy_growth_ttm ? row.total_revenue_yoy_growth_ttm / 100 : null, 'percent')}</td>
       </tr>
     `;
   }).join('');
   
-  card.style.display = 'block';
+  if (pagination) {
+    pagination.style.display = 'flex';
+    document.getElementById('screenerPageInfo').innerText = `Page ${screenerPage} of ${totalPages || 1}`;
+    document.getElementById('btnScreenerPrev').disabled = screenerPage === 1;
+    document.getElementById('btnScreenerNext').disabled = screenerPage === totalPages || totalPages === 0;
+  }
+};
+
+window.sortScreener = function(col) {
+  const colMap = {
+    'ticker': 'ticker',
+    'name': 'name',
+    'sector': 'sector',
+    'price': 'close',
+    'market_cap': 'market_cap_basic',
+    'pe': 'price_earnings_ttm',
+    'roic': 'return_on_invested_capital',
+    'rev_growth': 'total_revenue_yoy_growth_ttm'
+  };
+  const actualCol = colMap[col];
+  if (screenerSortCol === actualCol) {
+    screenerSortAsc = !screenerSortAsc;
+  } else {
+    screenerSortCol = actualCol;
+    screenerSortAsc = true;
+  }
+  renderScreener(); // Re-render sorted
+};
+
+window.screenerPrevPage = function() {
+  if (screenerPage > 1) {
+    screenerPage--;
+    renderScreener();
+  }
+};
+
+window.screenerNextPage = function() {
+  const totalPages = Math.ceil(screenerData.length / screenerItemsPerPage);
+  if (screenerPage < totalPages) {
+    screenerPage++;
+    renderScreener();
+  }
 };
 
 
@@ -406,12 +479,14 @@ window.searchTicker = searchTicker;
 
 function renderAll(data) {
   renderHero(data);
+  if (typeof renderAnalystTargets === 'function') renderAnalystTargets(data);
   renderPillars(data);
   renderSummaryMetrics(data);
   renderHistoricalTable(data);
   renderSharesChart(data);
   populateValuationDefaults(data);
   if (typeof renderStockNews === 'function') renderStockNews(data);
+  if (typeof initDCFCalculator === 'function') initDCFCalculator(data);
 
   // Chart engine — TradingView Lightweight Charts
   if (typeof renderStockChart === 'function' && data.chart_data) {
@@ -506,6 +581,59 @@ function renderHero(data) {
   document.getElementById('hero52H').textContent    = vm.high52;
   document.getElementById('heroATH').textContent    = vm.ath;
   document.getElementById('heroPillarBadge').textContent = vm.pillarText;
+}
+
+// ── Analyst Targets ────────────────────────────────
+function renderAnalystTargets(data) {
+  const lq = data.live_quote || {};
+  const currentPrice = lq.price || 0;
+  const targetLow = lq.targetLowPrice;
+  const targetMean = lq.targetMeanPrice;
+  const targetHigh = lq.targetHighPrice;
+  const recMean = lq.recommendationMean;
+  const recKey = lq.recommendationKey;
+
+  const card = document.getElementById('analystTargetsCard');
+  if (!targetLow || !targetHigh || targetLow === targetHigh) {
+    if (card) card.style.display = 'none';
+    return;
+  }
+  if (card) card.style.display = 'block';
+
+  document.getElementById('target-low-val').textContent = '$' + targetLow.toFixed(2);
+  document.getElementById('target-avg-val').textContent = '$' + (targetMean ? targetMean.toFixed(2) : ((targetLow + targetHigh) / 2).toFixed(2));
+  document.getElementById('target-high-val').textContent = '$' + targetHigh.toFixed(2);
+
+  let percent = ((currentPrice - targetLow) / (targetHigh - targetLow)) * 100;
+  percent = Math.max(0, Math.min(100, percent)); 
+  
+  const marker = document.getElementById('target-current-marker');
+  if (marker) {
+    marker.style.left = percent + '%';
+  }
+
+  const badge = document.getElementById('analyst-badge');
+  if (badge) {
+    if (recKey) {
+      const formattedKey = recKey.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+      badge.textContent = formattedKey + (recMean ? ` (${recMean})` : '');
+      
+      if (recKey.includes('buy')) {
+        badge.style.background = 'rgba(34, 197, 94, 0.15)';
+        badge.style.color = 'var(--success)';
+      } else if (recKey.includes('sell')) {
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.color = 'var(--danger)';
+      } else {
+        badge.style.background = 'rgba(251, 191, 36, 0.15)';
+        badge.style.color = 'var(--warning)';
+      }
+    } else {
+      badge.textContent = 'No Consensus';
+      badge.style.background = 'var(--surface2)';
+      badge.style.color = 'var(--text-muted)';
+    }
+  }
 }
 
 // ── Pillars ───────────────────────────────────────
@@ -1045,7 +1173,7 @@ window.toggleStockNews = toggleStockNews;
 // ── Watchlist Features ─────────────────────────────
 async function fetchWatchlist() {
   try {
-    const res = await fetch('/api/watchlist');
+    const res = await fetchWithRetry('/api/watchlist');
     if (res.ok) {
       AppState.watchlist = await res.json();
     }
@@ -1060,7 +1188,7 @@ async function toggleWatchlist(ticker) {
   const isWatched = AppState.watchlist.includes(ticker);
   const method = isWatched ? 'DELETE' : 'POST';
   try {
-    const res = await fetch(`/api/watchlist/${encodeURIComponent(ticker)}`, { method });
+    const res = await fetchWithRetry(`/api/watchlist/${encodeURIComponent(ticker)}`, { method });
     if (res.ok) {
       AppState.watchlist = await res.json();
       if (AppState.currentTicker === ticker) renderHero(AppState.stockData); // Update star icon
@@ -1087,7 +1215,7 @@ async function renderWatchlistDashboard() {
   container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 20px;">Fetching live quotes...</div>`;
   
   try {
-    const res = await fetch('/api/watchlist/quotes');
+    const res = await fetchWithRetry('/api/watchlist/quotes');
     if (!res.ok) throw new Error("Failed");
     const quotes = await res.json();
     
@@ -1291,3 +1419,233 @@ async function askAiCopilot(query) {
 window.askAiCopilot = askAiCopilot;
 window.fetchAiNewsSummary = fetchAiNewsSummary;
 
+
+// -- DCF Calculator --------------------------------
+
+function updateDcfVal(id) {
+  const input = document.getElementById('dcf-' + id);
+  const valSpan = document.getElementById('dcf-' + id + '-val');
+  if (input && valSpan) {
+    valSpan.textContent = parseFloat(input.value).toFixed(1) + '%';
+  }
+}
+window.updateDcfVal = updateDcfVal;
+
+function initDCFCalculator(data) {
+  calculateDCF();
+}
+window.initDCFCalculator = initDCFCalculator;
+
+function calculateDCF() {
+  const data = AppState.stockData;
+  if (!data) return;
+  
+  const fcf = data.fcf_ttm || 0;
+  const shares = data.shares_outstanding || 0;
+  const currentPrice = data.price || 0;
+  
+  const fcfGrowth = parseFloat(document.getElementById('dcf-st-growth').value) / 100;
+  const termGrowth = parseFloat(document.getElementById('dcf-term-growth').value) / 100;
+  const wacc = parseFloat(document.getElementById('dcf-wacc').value) / 100;
+  
+  let fairValue = 0;
+  let pvFcfSum = 0;
+  
+  if (fcf > 0 && shares > 0 && wacc > termGrowth) {
+    let projectedFcf = fcf;
+    for (let i = 1; i <= 5; i++) {
+      projectedFcf = projectedFcf * (1 + fcfGrowth);
+      pvFcfSum += projectedFcf / Math.pow(1 + wacc, i);
+    }
+    const terminalValue = (projectedFcf * (1 + termGrowth)) / (wacc - termGrowth);
+    const pvTerminalValue = terminalValue / Math.pow(1 + wacc, 5);
+    const totalEnterpriseValue = pvFcfSum + pvTerminalValue;
+    fairValue = totalEnterpriseValue / shares;
+  }
+  
+  const fvEl = document.getElementById('dcf-fair-value');
+  const priceEl = document.getElementById('dcf-current-price');
+  const upsideEl = document.getElementById('dcf-upside');
+  const badgeEl = document.getElementById('dcf-badge');
+  
+  if (fvEl) fvEl.textContent = fairValue > 0 ? '$' + fairValue.toFixed(2) : 'N/A';
+  if (priceEl) priceEl.textContent = '$' + currentPrice.toFixed(2);
+  
+  if (currentPrice > 0 && fairValue > 0) {
+    const upsidePct = ((fairValue - currentPrice) / currentPrice) * 100;
+    if (upsidePct > 0) {
+      if (upsideEl) {
+        upsideEl.textContent = '+' + upsidePct.toFixed(1) + '%';
+        upsideEl.style.color = 'var(--success)';
+      }
+      if (badgeEl) {
+        badgeEl.textContent = 'Undervalued';
+        badgeEl.style.background = 'rgba(34, 197, 94, 0.15)';
+        badgeEl.style.color = 'var(--success)';
+      }
+    } else {
+      if (upsideEl) {
+        upsideEl.textContent = upsidePct.toFixed(1) + '%';
+        upsideEl.style.color = 'var(--danger)';
+      }
+      if (badgeEl) {
+        badgeEl.textContent = 'Overvalued';
+        badgeEl.style.background = 'rgba(239, 68, 68, 0.15)';
+        badgeEl.style.color = 'var(--danger)';
+      }
+    }
+  } else {
+    if (upsideEl) {
+      upsideEl.textContent = 'N/A';
+      upsideEl.style.color = 'var(--text-muted)';
+    }
+    if (badgeEl) {
+      badgeEl.textContent = 'Need +FCF';
+      badgeEl.style.background = 'var(--surface2)';
+      badgeEl.style.color = 'var(--text-muted)';
+    }
+  }
+}
+window.calculateDCF = calculateDCF;
+// ==========================================
+// Authentication & Profile
+// ==========================================
+let isRegisterMode = false;
+
+function openAuthModal() {
+  document.getElementById('authModal').style.display = 'flex';
+  document.getElementById('authError').style.display = 'none';
+  document.getElementById('authUsername').value = '';
+  document.getElementById('authPassword').value = '';
+}
+
+function closeAuthModal() {
+  document.getElementById('authModal').style.display = 'none';
+}
+
+function toggleAuthMode() {
+  isRegisterMode = !isRegisterMode;
+  document.getElementById('authTitle').innerText = isRegisterMode ? 'Register' : 'Sign In';
+  document.getElementById('authSubmitBtn').innerText = isRegisterMode ? 'Register' : 'Login';
+  document.getElementById('authToggleText').innerHTML = isRegisterMode 
+    ? 'Already have an account? <a href="#" onclick="toggleAuthMode(); return false;">Sign In</a>'
+    : 'Don\'t have an account? <a href="#" onclick="toggleAuthMode(); return false;">Register</a>';
+}
+
+async function submitAuth(e) {
+  e.preventDefault();
+  const username = document.getElementById('authUsername').value;
+  const password = document.getElementById('authPassword').value;
+  const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
+  
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      document.getElementById('authError').innerText = data.detail || 'Authentication failed';
+      document.getElementById('authError').style.display = 'block';
+      return;
+    }
+    localStorage.setItem('jwt_token', data.access_token);
+    localStorage.setItem('username', data.username);
+    closeAuthModal();
+    updateAuthUI();
+    // Fetch user's watchlist upon successful login
+    await fetchWatchlist();
+    // Reload data that requires auth
+    if (window.location.hash === '#watchlist') renderWatchlistDashboard();
+    // Update star icon if on a stock page
+    if (AppState.currentTicker) renderHero(AppState.stockData);
+  } catch (err) {
+    document.getElementById('authError').innerText = 'Network error during authentication';
+    document.getElementById('authError').style.display = 'block';
+  }
+}
+
+function updateAuthUI() {
+  const token = localStorage.getItem('jwt_token');
+  const username = localStorage.getItem('username');
+  if (token && username) {
+    document.getElementById('btnOpenAuth').style.display = 'none';
+    document.getElementById('userProfile').style.display = 'block';
+    document.getElementById('profileName').innerText = username;
+  } else {
+    document.getElementById('btnOpenAuth').style.display = 'block';
+    document.getElementById('userProfile').style.display = 'none';
+  }
+}
+
+function toggleProfileMenu() {
+  const menu = document.getElementById('profileMenu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+
+function logoutUser() {
+  localStorage.removeItem('jwt_token');
+  localStorage.removeItem('username');
+  updateAuthUI();
+  document.getElementById('profileMenu').style.display = 'none';
+  AppState.watchlist = []; // Clear local watchlist state
+  if (window.location.hash === '#watchlist') renderWatchlistDashboard();
+  if (AppState.currentTicker) renderHero(AppState.stockData);
+}
+
+// ==========================================
+// Search Autocomplete
+// ==========================================
+let searchTimeout;
+const searchInput = document.getElementById('searchInput');
+const searchAutocomplete = document.getElementById('searchAutocomplete');
+
+if (searchInput) {
+  searchInput.addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    const q = e.target.value.trim();
+    if (!q) {
+      searchAutocomplete.style.display = 'none';
+      return;
+    }
+    
+    searchTimeout = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        if (!res.ok) throw new Error();
+        const results = await res.json();
+        
+        if (results.length === 0) {
+          searchAutocomplete.style.display = 'none';
+          return;
+        }
+        
+        searchAutocomplete.innerHTML = results.map(r => `
+          <div class="autocomplete-item" style="padding:10px; cursor:pointer; border-bottom:1px solid var(--border-color);" onclick="selectAutocomplete('${r.symbol}')">
+            <strong>${r.symbol}</strong> <span class="text-muted" style="font-size:0.9em; margin-left:8px;">${r.name}</span>
+          </div>
+        `).join('');
+        searchAutocomplete.style.display = 'block';
+      } catch (err) {
+        searchAutocomplete.style.display = 'none';
+      }
+    }, 300);
+  });
+  
+  // Close when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!searchInput.contains(e.target) && !searchAutocomplete.contains(e.target)) {
+      searchAutocomplete.style.display = 'none';
+    }
+  });
+}
+
+window.selectAutocomplete = function(symbol) {
+  searchAutocomplete.style.display = 'none';
+  searchInput.value = symbol;
+  searchTicker(symbol);
+};
+
+// Call on startup
+document.addEventListener('DOMContentLoaded', updateAuthUI);

@@ -215,6 +215,13 @@ def _extract_live_quote(info: dict, price_statistics: dict = None) -> dict:
     lq["dividendYield"] = safe_val(true_yield)
     lq["trailingAnnualDividendRate"] = safe_val(info.get("trailingAnnualDividendRate"))
     lq["forwardDividendYield"] = safe_val(info.get("trailingDividendRate"))
+    
+    lq["targetMeanPrice"] = safe_val(info.get("targetMeanPrice"))
+    lq["targetHighPrice"] = safe_val(info.get("targetHighPrice"))
+    lq["targetLowPrice"]  = safe_val(info.get("targetLowPrice"))
+    lq["recommendationMean"] = safe_val(info.get("recommendationMean"))
+    lq["recommendationKey"] = info.get("recommendationKey")
+    
     return lq
 
 def _extract_ttm_financials(t: yf.Ticker, info: dict, lq: dict) -> dict:
@@ -372,6 +379,11 @@ def _extract_annual_historical(t: yf.Ticker, info: dict, annual_shares_map: dict
 
             cfo = capex = None
             debt_iss = debt_pay = share_rep = 0.0
+            
+            equity = None
+            if not a_bs.empty and col in a_bs.columns:
+                equity = get_first_valid_val(a_bs, ['Stockholders Equity', 'Total Stockholder Equity', 'Total Equity Gross Minority Interest'], col)
+
             if not a_cf.empty and col in a_cf.columns:
                 cfo   = get_first_valid_val(a_cf, ['Operating Cash Flow', 'Total Cash From Operating Activities'], col)
                 capex = get_first_valid_val(a_cf, ['Capital Expenditure', 'Capital Expenditures'], col)
@@ -425,6 +437,7 @@ def _extract_annual_historical(t: yf.Ticker, info: dict, annual_shares_map: dict
                 "fcfMargin":        fcf_margin,
                 "pe":               pe,
                 "pfcf":             pfcf,
+                "roic":             safe_divide(ni, equity) if equity else safe_val(info.get("returnOnEquity")),
                 "revenueGrowth":    None,
             })
 
@@ -505,8 +518,9 @@ def _calculate_multi_year_stats(annual_data: list, t: yf.Ticker, info: dict, pri
     stats["avg_netincome_margin_10yr"]= stats["netincome_margin_10yr"]
     stats["avg_fcf_margin_5yr"]       = stats["fcf_margin_5yr"]
     stats["avg_fcf_margin_10yr"]      = stats["fcf_margin_10yr"]
-    stats["avg_roic_5yr"]             = safe_val(info.get("returnOnEquity"))
-    stats["avg_roic_10yr"]            = stats["avg_roic_5yr"]
+    stats["avg_roic_1yr"]             = avg_n("roic", 1) or safe_val(info.get("returnOnEquity"))
+    stats["avg_roic_5yr"]             = avg_n("roic", lb) or stats["avg_roic_1yr"]
+    stats["avg_roic_10yr"]            = avg_n("roic", 10) or stats["avg_roic_5yr"]
 
     stats["avg_pe_5yr"]    = avg_n("pe", lb)
     stats["median_pe_5yr"] = median_n("pe", lb)
@@ -564,6 +578,10 @@ def _calculate_8_pillar(stats: dict) -> tuple:
 def _calculate_valuation_defaults(stats: dict, info: dict = None, ticker: str = "UNKNOWN") -> dict:
     if info is None:
         info = {}
+    
+    if not stats and not info:
+        return {}
+
         
     print(f"--- [DIAGNOSTIC LOG: {ticker}] ---")
     print(f"Trailing PE: {info.get('trailingPE')}")
@@ -694,15 +712,23 @@ def fetch_stock_data(ticker: str) -> dict:
     logger.info(f"Fetching stock data for {ticker}")
     t = make_ticker(ticker)
 
+    from cache import load_cache, save_cache
+    fin_cache_key = f"fin_{ticker}"
+    fin_cache = load_cache(fin_cache_key, max_age_minutes=24*60)
+
     with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [
-            executor.submit(lambda: t.info),
-            executor.submit(lambda: t.quarterly_financials),
-            executor.submit(lambda: t.quarterly_cashflow),
-            executor.submit(lambda: t.financials),
-            executor.submit(lambda: t.cashflow),
-            executor.submit(lambda: t.balance_sheet),
-        ]
+        futures = [executor.submit(lambda: t.info)]
+        
+        # Only fetch heavy financial tables if not cached
+        if not fin_cache:
+            futures.extend([
+                executor.submit(lambda: t.quarterly_financials),
+                executor.submit(lambda: t.quarterly_cashflow),
+                executor.submit(lambda: t.financials),
+                executor.submit(lambda: t.cashflow),
+                executor.submit(lambda: t.balance_sheet),
+            ])
+            
         # Retain this one frame so 52-week, YTD, and lifetime values cannot
         # accidentally be derived from different adjustment modes.
         history_future = executor.submit(lambda: t.history(period="max", auto_adjust=True))
@@ -740,14 +766,26 @@ def fetch_stock_data(ticker: str) -> dict:
             result["price_statistics"] = get_price_statistics(pd.DataFrame())
 
         result["live_quote"] = _extract_live_quote(info, result["price_statistics"])
-        result["ttm_financials"] = _extract_ttm_financials(t, info, result["live_quote"])
         
-        sh, annual_shares_map = _extract_shares_history(t)
-        result["shares_outstanding_history"] = sh
-        
-        annual_data = _extract_annual_historical(t, info, annual_shares_map)
-        result["annual_historical"] = annual_data
-        result["data_years_available"] = len(annual_data)
+        if fin_cache:
+            result["ttm_financials"] = fin_cache.get("ttm", {})
+            result["shares_outstanding_history"] = fin_cache.get("shares", {"quarterly_shares": [], "annual_shares": []})
+            annual_data = fin_cache.get("annual", [])
+            result["annual_historical"] = annual_data
+            result["data_years_available"] = len(annual_data)
+        else:
+            result["ttm_financials"] = _extract_ttm_financials(t, info, result["live_quote"])
+            sh, annual_shares_map = _extract_shares_history(t)
+            result["shares_outstanding_history"] = sh
+            annual_data = _extract_annual_historical(t, info, annual_shares_map)
+            result["annual_historical"] = annual_data
+            result["data_years_available"] = len(annual_data)
+            
+            save_cache(fin_cache_key, {
+                "ttm": result["ttm_financials"],
+                "shares": result["shares_outstanding_history"],
+                "annual": result["annual_historical"]
+            }, ttl_seconds=24*3600)
         
         stats = _calculate_multi_year_stats(annual_data, t, info, result["price_statistics"])
         result["derived_multi_year_stats"] = stats
@@ -838,9 +876,9 @@ def flatten_response(d: dict) -> dict:
         flat["annual"][0].get("netIncomeMargin") if flat["annual"] else None
     )
     flat["fcf_margin_1yr"]      = stats.get("fcf_margin_1yr") or (
-        flat["annual"][0].get("fcfMargin") if flat["annual"] else None
+        safe_divide(stats.get("fcf_ttm"), stats.get("revenue_ttm")) if stats.get("revenue_ttm") else None
     )
-    flat["roic_1yr"]            = stats.get("avg_roic_5yr")  # best proxy
+    flat["roic_1yr"]            = stats.get("avg_roic_1yr")  # best proxy
 
     # Pillar values (raw numbers for frontend to evaluate)
     pillars = d.get("eight_pillar") or {}

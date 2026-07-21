@@ -9,8 +9,22 @@ from urllib3.util.retry import Retry
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
-load_dotenv()
-GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    PORT: int = 8000
+    DATABASE_URL: str = "sqlite:///./app.db"
+    REDIS_URL: str = ""
+    JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
+    GEMINI_API_KEY: str = ""
+    GNEWS_API_KEY: str = ""
+    CORS_ORIGINS: str = "*"
+
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
+GNEWS_API_KEY = settings.GNEWS_API_KEY
 
 def validate_config():
     """
@@ -19,12 +33,10 @@ def validate_config():
     GNEWS_API_KEY is currently optional due to H-3 fallback handling.
     """
     logger.info("Validating startup configuration...")
-    if not GNEWS_API_KEY:
+    if not settings.GNEWS_API_KEY:
         logger.warning("GNEWS_API_KEY not found in environment. Macro news features will be unavailable or use fallback mode.")
-    # If there were strict requirements, we'd do:
-    # if not STRICT_VAR:
-    #     logger.critical("STRICT_VAR is missing. Cannot start application.")
-    #     sys.exit(1)
+    if not settings.JWT_SECRET_KEY or settings.JWT_SECRET_KEY == "your-secret-key-change-in-production":
+        logger.warning("Using default JWT_SECRET_KEY. Please change this in production.")
     logger.info("Configuration validated successfully.")
 
 # ---------------------------------------------------------------------------

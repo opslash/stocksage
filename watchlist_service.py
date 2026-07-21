@@ -47,9 +47,9 @@ def _save_watchlist(watchlist):
     except Exception as e:
         logger.error(f"Failed to write watchlist: {e}")
 
-def get_watchlist_quotes():
+def get_watchlist_quotes(symbols=None):
     """Fetch lightweight current quotes for all tickers in the watchlist."""
-    watchlist = get_watchlist()
+    watchlist = symbols if symbols is not None else get_watchlist()
     if not watchlist:
         return []
     

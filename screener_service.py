@@ -18,7 +18,7 @@ def get_screener_results(
     try:
         # Default columns we want to retrieve
         columns = [
-            'name', 'close', 'market_cap_basic', 'price_earnings_ttm', 
+            'name', 'description', 'close', 'market_cap_basic', 'price_earnings_ttm', 
             'return_on_invested_capital', 'total_revenue_yoy_growth_ttm', 'sector'
         ]
         
@@ -59,6 +59,22 @@ def get_screener_results(
         # Sanitize data for JSON serialization (replace NaN/Infinity)
         import pandas as pd
         import numpy as np
+        
+        # 1. Filter out preferred share classes (slash in name or explicit in description)
+        df = df[~df['name'].astype(str).str.contains('/', na=False)]
+        if 'description' in df.columns:
+            df = df[~df['description'].astype(str).str.contains('Preferred Stock|Depositary Shares representing', case=False, na=False)]
+        
+        # 2. Filter out entries with zero or NaN price
+        df = df[df['close'] > 0.0]
+        
+        # 3. Filter out duplicate entries based on normalized company description
+        if 'description' in df.columns:
+            # Sort by market cap descending before dropping duplicates to keep the largest issue
+            df = df.sort_values(by='market_cap_basic', ascending=False)
+            df['desc_norm'] = df['description'].astype(str).str.replace(r'[^a-zA-Z0-9]', '', regex=True).str.lower()
+            df = df.drop_duplicates(subset=['desc_norm'], keep='first')
+            df = df.drop(columns=['desc_norm'])
         
         df = df.replace([np.inf, -np.inf], np.nan)
         df = df.replace({np.nan: None})

@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
 
-from config import logger, validate_config
+from config import settings, logger, validate_config
 from cache import load_cache, save_cache, CACHE_DIR
 from stock_service import resolve_ticker, fetch_stock_data, flatten_response, make_ticker, fetch_peer_comparison, fetch_chart_data
 from news_service import fetch_macro_news
@@ -19,8 +19,14 @@ import yfinance as yf
 import ai_service
 from pydantic import BaseModel
 
+from models import init_db, get_db, Watchlist, Scenario
+from auth_service import router as auth_router, get_current_user, User
+from sqlalchemy.orm import Session
+from fastapi import Depends
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_db()
     scheduler = BackgroundScheduler()
     scheduler.add_job(refresh_news_cache,      'interval', minutes=55)
     scheduler.add_job(refresh_popular_tickers, 'interval', minutes=65)
@@ -33,10 +39,14 @@ async def lifespan(app: FastAPI):
         logger.info("APScheduler stopped.")
 
 app = FastAPI(title='Stock Analysis API', lifespan=lifespan)
+app.include_router(auth_router)
+
+# Parse CORS origins list from comma-separated string
+cors_origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(',')] if settings.CORS_ORIGINS else ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'],
+    allow_origins=cors_origins,
     allow_methods=['*'],
     allow_headers=['*'],
 )
@@ -72,7 +82,8 @@ async def get_quote(ticker: str):
             content={"error": f"Search failed for '{ticker_input}': {str(e)}"}
         )
 
-    cached = load_cache(symbol, max_age_minutes=75)
+    # 15 minute cache for the full profile endpoint
+    cached = load_cache(symbol, max_age_minutes=15)
     if cached:
         # Bypass stale cache if it predates the chart_data feature
         has_chart = isinstance(cached.get("chart_data"), dict) and bool(cached["chart_data"].get("candlestick"))
@@ -93,7 +104,7 @@ async def get_quote(ticker: str):
     try:
         data = fetch_stock_data(symbol)
         flat = flatten_response(data)
-        save_cache(symbol, flat)
+        save_cache(symbol, flat, ttl_seconds=15 * 60)
         return flat
     except Exception as e:
         logger.error(f"Error in get_quote for {symbol}: {e}")
@@ -223,20 +234,64 @@ async def get_market_indices():
         return []
 
 @app.get('/api/watchlist')
-async def get_watchlist():
-    return watchlist_service.get_watchlist()
+async def get_watchlist(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    watchlists = db.query(Watchlist).filter(Watchlist.user_id == current_user.id).all()
+    return [w.symbol for w in watchlists]
 
 @app.get('/api/watchlist/quotes')
-async def get_watchlist_quotes():
-    return watchlist_service.get_watchlist_quotes()
+async def get_watchlist_quotes_route(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    watchlists = db.query(Watchlist).filter(Watchlist.user_id == current_user.id).all()
+    symbols = [w.symbol for w in watchlists]
+    if not symbols:
+        return []
+    return watchlist_service.get_watchlist_quotes(symbols=symbols)
 
 @app.post('/api/watchlist/{ticker}')
-async def add_to_watchlist(ticker: str):
-    return watchlist_service.add_to_watchlist(ticker)
+async def add_to_watchlist(ticker: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticker = ticker.upper()
+    exists = db.query(Watchlist).filter(Watchlist.user_id == current_user.id, Watchlist.symbol == ticker).first()
+    if not exists:
+        db.add(Watchlist(user_id=current_user.id, symbol=ticker))
+        db.commit()
+    return await get_watchlist(current_user, db)
 
 @app.delete('/api/watchlist/{ticker}')
-async def remove_from_watchlist(ticker: str):
-    return watchlist_service.remove_from_watchlist(ticker)
+async def remove_from_watchlist(ticker: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticker = ticker.upper()
+    exists = db.query(Watchlist).filter(Watchlist.user_id == current_user.id, Watchlist.symbol == ticker).first()
+    if exists:
+        db.delete(exists)
+        db.commit()
+    return await get_watchlist(current_user, db)
+
+class ScenarioUpdate(BaseModel):
+    assumptions: dict
+
+@app.get('/api/scenario/{ticker}')
+async def get_scenario(ticker: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticker = ticker.upper()
+    scenario = db.query(Scenario).filter(Scenario.user_id == current_user.id, Scenario.symbol == ticker).first()
+    return scenario.assumptions if scenario else None
+
+@app.post('/api/scenario/{ticker}')
+async def save_scenario(ticker: str, data: ScenarioUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticker = ticker.upper()
+    scenario = db.query(Scenario).filter(Scenario.user_id == current_user.id, Scenario.symbol == ticker).first()
+    if scenario:
+        scenario.assumptions = data.assumptions
+    else:
+        db.add(Scenario(user_id=current_user.id, symbol=ticker, assumptions=data.assumptions))
+    db.commit()
+    return {"status": "success"}
+
+@app.get('/api/search')
+async def search_ticker(q: str):
+    try:
+        results = yf.Search(q, max_results=5).quotes
+        return [{"symbol": r.get('symbol'), "name": r.get('shortname') or r.get('longname'), "type": r.get('typeDisp')} for r in results if r.get('quoteType') in ['EQUITY', 'ETF']]
+    except Exception as e:
+        logger.error(f"Search failed: {e}")
+        return []
 
 from typing import Optional
 
@@ -294,3 +349,4 @@ if __name__ == '__main__':
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run('main:app', host='0.0.0.0', port=port, reload=False)
+

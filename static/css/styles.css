@@ -581,3 +581,65 @@
   background: var(--bg-main);
 }
 
+
+/* DCF Calculator Slider Styles */
+input[type=range] {
+  -webkit-appearance: none;
+  width: 100%;
+  background: transparent;
+}
+input[type=range]:focus {
+  outline: none;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+input[type=range]::-webkit-slider-thumb {
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  -webkit-appearance: none;
+  margin-top: -5px;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+}
+input[type=range]:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.8);
+}
+
+/* -- PDF Export Mode Overrides -- */
+.pdf-export-mode {
+  --bg: #ffffff;
+  --bg2: #f8fafc;
+  --surface: #ffffff;
+  --surface2: #f1f5f9;
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --text-soft: #64748b;
+  --border: #e2e8f0;
+  --border-bright: #cbd5e1;
+  --shadow: none;
+  --gradient: #0f172a;
+  --gradient-card: none;
+  background-image: none !important;
+}
+.pdf-export-mode body {
+  background: #ffffff !important;
+  background-image: none !important;
+  color: #0f172a;
+}
+.pdf-export-mode .card, .pdf-export-mode .panel {
+  border: 1px solid #e2e8f0;
+  box-shadow: none !important;
+  background: #ffffff !important;
+}
+.pdf-export-mode * {
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+
