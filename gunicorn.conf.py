@@ -9,7 +9,8 @@ bind = f"0.0.0.0:{settings.PORT}"
 worker_class = "uvicorn.workers.UvicornWorker"
 
 # Dynamically calculate workers based on CPU cores, with a minimum of 2
-workers = int(os.environ.get("GUNICORN_WORKERS", multiprocessing.cpu_count() * 2 + 1))
+# Changed to default to 2 for cloud environments like Render to prevent OOM
+workers = int(os.environ.get("GUNICORN_WORKERS", 2))
 
 # Keep-alive settings for cloud balancers
 keepalive = 120
