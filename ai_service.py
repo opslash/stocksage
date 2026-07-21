@@ -1,4 +1,3 @@
-import os
 import json
 import logging
 from google import genai
@@ -11,9 +10,12 @@ from config import settings
 # Configure Gemini Client
 api_key = settings.GEMINI_API_KEY
 if not api_key:
-    logger.warning("GEMINI_API_KEY not found in environment. AI features will be disabled or use fallback mode.")
+    logger.warning(
+        "GEMINI_API_KEY not found in environment. AI features will be disabled or use fallback mode."
+    )
 else:
     client = genai.Client(api_key=api_key)
+
 
 def summarize_news(articles: list[dict]) -> dict:
     """
@@ -22,25 +24,31 @@ def summarize_news(articles: list[dict]) -> dict:
     """
     if not api_key:
         return {
-            "summary": ["AI integration is currently disabled (API key missing).", "Please add a valid GEMINI_API_KEY to your environment.", "Standard news view is active."],
+            "summary": [
+                "AI integration is currently disabled (API key missing).",
+                "Please add a valid GEMINI_API_KEY to your environment.",
+                "Standard news view is active.",
+            ],
             "sentiment": "Neutral",
-            "takeaways": ["API Key Missing"]
+            "takeaways": ["API Key Missing"],
         }
-        
+
     if not articles:
         return {
             "summary": ["No recent news available to summarize."],
             "sentiment": "Neutral",
-            "takeaways": ["No Data"]
+            "takeaways": ["No Data"],
         }
 
     try:
         # Prepare context
         context = ""
-        for i, article in enumerate(articles[:10]):  # Limit to top 10 to fit context window easily
-            context += f"Headline {i+1}: {article.get('title', '')}\n"
-            context += f"Snippet {i+1}: {article.get('description', '')}\n\n"
-            
+        for i, article in enumerate(
+            articles[:10]
+        ):  # Limit to top 10 to fit context window easily
+            context += f"Headline {i + 1}: {article.get('title', '')}\n"
+            context += f"Snippet {i + 1}: {article.get('description', '')}\n\n"
+
         prompt = f"""
         You are a seasoned financial analyst. I will provide you with recent news headlines and snippets.
         Analyze them and provide an executive briefing.
@@ -55,24 +63,29 @@ def summarize_news(articles: list[dict]) -> dict:
             "takeaways": ["key theme 1", "key theme 2"]
         }}
         """
-        
+
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model="gemini-1.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 temperature=0.2,
-            )
+            ),
         )
-        
+
         return json.loads(response.text)
     except Exception as e:
         logger.error(f"Error calling Gemini for news summary: {e}")
         return {
-            "summary": ["Error generating AI summary.", str(e), "Please check your API key and quotas."],
+            "summary": [
+                "Error generating AI summary.",
+                str(e),
+                "Please check your API key and quotas.",
+            ],
             "sentiment": "Neutral",
-            "takeaways": ["AI Error"]
+            "takeaways": ["AI Error"],
         }
+
 
 def ask_copilot(ticker: str, query: str, context: dict) -> str:
     """
@@ -80,7 +93,7 @@ def ask_copilot(ticker: str, query: str, context: dict) -> str:
     """
     if not api_key:
         return "⚠️ AI Copilot is currently disabled because the GEMINI_API_KEY environment variable is not set."
-        
+
     try:
         sys_prompt = f"""
         You are an expert AI Stock Analyst Copilot for StockSage.
@@ -89,20 +102,20 @@ def ask_copilot(ticker: str, query: str, context: dict) -> str:
         Be concise, analytical, and professional. 
         Format your response in Markdown (bolding key terms, using bullet points if helpful).
         """
-        
+
         user_prompt = f"""
         User Query: {query}
         
         Stock Context ({ticker}):
         {json.dumps(context, indent=2)}
         """
-        
+
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model="gemini-1.5-flash",
             contents=user_prompt,
             config=types.GenerateContentConfig(
                 system_instruction=sys_prompt,
-            )
+            ),
         )
         return response.text
     except Exception as e:
