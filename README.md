@@ -92,15 +92,63 @@ Click **"Deploy"**. Render will build and deploy your app. Your live URL will be
 
 ## 📁 Project Structure
 
-```
+```text
 Stock Market Tool/
-├── backend.py          # FastAPI server + APScheduler + data fetching
-├── index.html          # Complete single-page frontend
-├── requirements.txt    # Python dependencies
-├── .env.example        # Environment variable template
-├── .env                # Your actual env vars (DO NOT commit this)
-├── render.yaml         # Render.com deployment config
-└── cache/              # Auto-created: hourly data cache (JSON files)
+├── backend.py            # FastAPI main entrypoint and routing
+├── stock_service.py      # Core data orchestration and business logic
+├── config.py             # Global configuration, logging, and constants
+├── utils.py              # Math utilities and data sanitization
+├── requirements.txt      # Frozen dependencies
+├── .env.example          # Environment variable template
+└── static/
+    ├── css/
+    │   └── styles.css    # Centralized CSS variables and component styling
+    └── js/
+        ├── app.js             # Router, state management, search, and view-model transformers
+        ├── formatters.js      # Centralized string/number formatting utilities
+        ├── chart_engine.js    # TradingView Lightweight Charts rendering
+        ├── comps_matrix.js    # Peer comparison view models and rendering
+        └── valuation.js       # DCF scenario calculator logic
+```
+
+---
+
+## 🏗️ Architecture & Data Flow
+
+```mermaid
+graph TD
+    %% Frontend Layer
+    subgraph Frontend [Browser (Vanilla JS + CSS)]
+        UI[UI Components]
+        Router[Router & State]
+        UI -->|Input| Router
+    end
+
+    %% Backend Layer
+    subgraph Backend [FastAPI Server]
+        API[API Router]
+        StockService[Stock Service]
+        Peers[Peer Discovery]
+        Valuation[Valuation Defaults]
+        API --> StockService
+        StockService --> Peers
+        StockService --> Valuation
+    end
+
+    %% Data Sources Layer
+    subgraph External Data Sources
+        YF[yfinance API]
+        News[GNews API / Fed RSS]
+    end
+
+    Router -->|Fetch /api/stock/:ticker| API
+    StockService -->|Concurrent ThreadPool| YF
+    Backend -->|News Schedule| News
+    
+    YF -->|Raw JSON/DF| StockService
+    StockService -->|Clean Dictionaries| API
+    API -->|JSON Response| Router
+    Router -->|View Models| UI
 ```
 
 ---

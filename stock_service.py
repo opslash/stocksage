@@ -1,0 +1,724 @@
+import yfinance as yf
+from datetime import datetime, timezone
+import pandas as pd
+import numpy as np
+import json
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from config import logger, VALUATION_CONFIG
+from utils import safe_val, get_first_valid_val, safe_cagr, best_cagr, safe_mean, safe_median, safe_divide, normalize_shares_history
+from price_statistics import get_price_statistics
+
+# Load peer configuration
+try:
+    with open(Path(__file__).parent / "peers.json", "r", encoding="utf-8") as f:
+        PEERS_MAP = json.load(f)
+except Exception as e:
+    logger.warning(f"Failed to load peers.json: {e}")
+    PEERS_MAP = {}
+
+# ---------------------------------------------------------------------------
+# Chart Data (OHLCV + server-side SMAs)
+# ---------------------------------------------------------------------------
+def fetch_chart_data(t: yf.Ticker, ticker: str) -> dict:
+    """Fetch 1Y daily OHLCV and compute 50/200-day SMAs server-side."""
+    result = {"candlestick": [], "sma_50": [], "sma_200": [], "volume": []}
+    try:
+        hist = t.history(period="1y", interval="1d")
+        if hist.empty:
+            return result
+
+        hist.index = pd.to_datetime(hist.index)
+        if hist.index.tz is not None:
+            hist.index = hist.index.tz_convert(None)
+
+        hist["SMA_50"]  = hist["Close"].rolling(window=50,  min_periods=1).mean()
+        hist["SMA_200"] = hist["Close"].rolling(window=200, min_periods=1).mean()
+        hist["PrevClose"] = hist["Close"].shift(1)
+
+        for date, row in hist.iterrows():
+            ts = date.strftime("%Y-%m-%d")
+
+            if pd.notna(row["Open"]) and pd.notna(row["Close"]):
+                result["candlestick"].append({
+                    "time":  ts,
+                    "open":  round(float(row["Open"]),  4),
+                    "high":  round(float(row["High"]),  4),
+                    "low":   round(float(row["Low"]),   4),
+                    "close": round(float(row["Close"]), 4),
+                })
+
+            if pd.notna(row["SMA_50"]):
+                result["sma_50"].append({"time": ts, "value": round(float(row["SMA_50"]), 4)})
+
+            if pd.notna(row["SMA_200"]):
+                result["sma_200"].append({"time": ts, "value": round(float(row["SMA_200"]), 4)})
+
+            if pd.notna(row["Volume"]):
+                prev = float(row["PrevClose"]) if pd.notna(row["PrevClose"]) else float(row["Close"])
+                color = "#26a69a" if float(row["Close"]) >= prev else "#ef5350"
+                result["volume"].append({"time": ts, "value": int(row["Volume"]), "color": color})
+
+    except Exception as e:
+        logger.error(f"Error fetching chart data for {ticker}: {e}")
+    return result
+
+# ---------------------------------------------------------------------------
+# Peer Comparison
+# ---------------------------------------------------------------------------
+def fetch_peer_comparison(ticker: str, info: dict) -> list:
+    """Discover and fetch core metrics for up to 3 peer equities concurrently."""
+    peers = []
+    try:
+        # Load from peers.json
+        peer_symbols = PEERS_MAP.get(ticker.upper())
+        if not peer_symbols:
+            name = info.get("shortName") or info.get("longName") or ""
+            query = f"{ticker} {name}".strip()
+            search_results = yf.Search(query, max_results=12).quotes
+            peer_symbols = []
+            for r in search_results:
+                sym = r.get("symbol", "")
+                if sym and sym != ticker and r.get("quoteType") == "EQUITY":
+                    peer_symbols.append(sym)
+                if len(peer_symbols) >= 3:
+                    break
+
+        def _fetch_one(sym):
+            try:
+                t = yf.Ticker(sym)
+                i = t.info
+                if not i or ("regularMarketPrice" not in i and "currentPrice" not in i):
+                    return None
+                peer_eps = i.get('trailingEps') or i.get('forwardEps') or 0.0
+                peer_price = i.get('currentPrice') or i.get('regularMarketPrice') or 0.0
+                peer_pe = i.get('trailingPE')
+                if peer_price and peer_eps:
+                    peer_pe = safe_divide(peer_price, peer_eps)
+
+                return {
+                    "symbol":       sym,
+                    "name":         i.get("longName") or i.get("shortName") or sym,
+                    "market_cap":   safe_val(i.get("marketCap")),
+                    "pe_ratio":     safe_val(peer_pe),
+                    "roic":         safe_val(i.get("returnOnEquity")),
+                    "rev_growth_5yr": safe_val(i.get("revenueGrowth")),
+                    "fcf_margin":   safe_divide(i.get("freeCashflow"), i.get("totalRevenue"))
+                                    if i.get("freeCashflow") and i.get("totalRevenue")
+                                    else None,
+                }
+            except Exception:
+                return None
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {executor.submit(_fetch_one, sym): sym for sym in peer_symbols}
+            for future in as_completed(futures, timeout=12):
+                res = future.result()
+                if res:
+                    peers.append(res)
+                if len(peers) >= 3:
+                    break
+
+    except Exception as e:
+        logger.error(f"Error fetching peers for {ticker}: {e}")
+    return peers[:3]
+
+def make_ticker(symbol: str) -> yf.Ticker:
+    return yf.Ticker(symbol)
+
+def resolve_ticker(query: str) -> str:
+    clean_query = query.strip()
+    
+    # 1. If it already looks like a valid ticker, test it directly
+    stock = yf.Ticker(clean_query.upper())
+    try:
+        if stock.info and ('regularMarketPrice' in stock.info or 'currentPrice' in stock.info):
+            return clean_query.upper()
+    except Exception:
+        pass
+
+    # 2. Dynamic Search for company name across global exchanges
+    try:
+        search_results = yf.Search(clean_query, max_results=5).quotes
+        if search_results:
+            # Prefer equity symbols (e.g., quoteType == 'EQUITY')
+            for result in search_results:
+                if result.get('quoteType') == 'EQUITY':
+                    return result.get('symbol')
+            return search_results[0].get('symbol')
+    except Exception:
+        pass
+
+    # 3. Fallback for Indian Markets (.NS suffix check)
+    try:
+        in_symbol = f"{clean_query.upper()}.NS"
+        stock_in = yf.Ticker(in_symbol)
+        if stock_in.info and ('regularMarketPrice' in stock_in.info or 'currentPrice' in stock_in.info):
+            return in_symbol
+    except Exception:
+        pass
+
+    return clean_query.upper()
+
+# ---------------------------------------------------------------------------
+# Core Helpers (L-1 Decomposition)
+# ---------------------------------------------------------------------------
+
+def _extract_live_quote(info: dict, price_statistics: dict = None) -> dict:
+    lq = {}
+    current_price = float(info.get('currentPrice') or info.get('regularMarketPrice') or 0.0)
+    previous_close = float(info.get('regularMarketPreviousClose') or info.get('previousClose') or current_price)
+
+    price_change = current_price - previous_close
+    percent_change = safe_divide(price_change, previous_close, 0.0)
+
+    lq["price"]         = current_price
+    lq["change"]        = price_change
+    lq["changePercent"] = percent_change
+    lq["marketCap"]     = safe_val(info.get("marketCap"))
+    lq["volume"]        = safe_val(info.get("volume"))
+    lq["avgVolume"]     = safe_val(info.get("averageVolume"))
+    # Keep every displayed price extreme on the same split-adjusted basis.
+    price_statistics = price_statistics or {}
+    lq["week52High"]    = price_statistics.get("week52High")
+    lq["week52Low"]     = price_statistics.get("week52Low")
+    lq["name"]          = info.get("longName") or info.get("shortName")
+    lq["sector"]        = info.get("sector")
+    lq["industry"]      = info.get("industry")
+    
+    dividend_rate = float(info.get('dividendRate') or 0.0)
+    true_yield = safe_divide(dividend_rate, current_price, 0.0)
+    lq["dividendYield"] = safe_val(true_yield)
+    lq["trailingAnnualDividendRate"] = safe_val(info.get("trailingAnnualDividendRate"))
+    lq["forwardDividendYield"] = safe_val(info.get("trailingDividendRate"))
+    return lq
+
+def _extract_ttm_financials(t: yf.Ticker, info: dict, lq: dict) -> dict:
+    ttm = {}
+    q_fin = t.quarterly_financials
+    q_cf  = t.quarterly_cashflow
+
+    rev_ttm = ni_ttm = cfo_ttm = capex_ttm = gross_profit_ttm = None
+
+    if not q_fin.empty and len(q_fin.columns) >= 4:
+        cols = q_fin.columns[:4]
+        for rn in ['Total Revenue', 'Operating Revenue', 'Revenue']:
+            if rn in q_fin.index:
+                rev_ttm = safe_val(q_fin.loc[rn, cols].sum())
+                break
+        for rn in ['Net Income', 'Net Income Common Stockholders']:
+            if rn in q_fin.index:
+                ni_ttm = safe_val(q_fin.loc[rn, cols].sum())
+                break
+        for rn in ['Gross Profit']:
+            if rn in q_fin.index:
+                gross_profit_ttm = safe_val(q_fin.loc[rn, cols].sum())
+                break
+
+    if not q_cf.empty and len(q_cf.columns) >= 4:
+        cols = q_cf.columns[:4]
+        for rn in ['Operating Cash Flow', 'Total Cash From Operating Activities']:
+            if rn in q_cf.index:
+                cfo_ttm = safe_val(q_cf.loc[rn, cols].sum())
+                break
+        for rn in ['Capital Expenditure', 'Capital Expenditures']:
+            if rn in q_cf.index:
+                capex_ttm = safe_val(q_cf.loc[rn, cols].sum())
+                if capex_ttm is not None:
+                    capex_ttm = abs(capex_ttm)
+                break
+
+    fcf_ttm = None
+    if cfo_ttm is not None and capex_ttm is not None:
+        fcf_ttm = cfo_ttm - capex_ttm
+
+    shares_outstanding = safe_val(info.get('sharesOutstanding'))
+    if not shares_outstanding and not q_fin.empty:
+        for col in q_fin.columns:
+            sv = get_first_valid_val(q_fin, ['Diluted Average Shares'], col)
+            if sv:
+                shares_outstanding = sv
+                break
+    lq["shares_outstanding"] = shares_outstanding
+
+    trailing_eps = safe_val(info.get('trailingEps')) or safe_val(info.get('forwardEps')) or 0.0
+    current_price = float(info.get('currentPrice') or info.get('regularMarketPrice') or 0.0)
+    
+    pe_ttm = safe_val(info.get('trailingPE'))
+    if pe_ttm is None and trailing_eps is not None and trailing_eps > 0:
+        pe_ttm = safe_divide(current_price, trailing_eps)
+    elif trailing_eps is not None and trailing_eps <= 0:
+        pe_ttm = None
+
+    ps_ttm = safe_val(info.get('priceToSalesTrailing12Months'))
+    peg_ratio = safe_val(info.get('pegRatio'))
+    
+    profit_margin = safe_val(info.get('profitMargins'))
+    gross_margin = safe_val(info.get('grossMargins'))
+
+    fcf_ttm_est = safe_val(info.get('freeCashflow')) or fcf_ttm
+    market_cap = lq.get("marketCap")
+    
+    pfcf_ttm = None
+    if market_cap and fcf_ttm_est and fcf_ttm_est > 0:
+        pfcf_ttm = safe_divide(market_cap, fcf_ttm_est)
+
+    if not ps_ttm and market_cap and rev_ttm and rev_ttm > 0:
+        ps_ttm = safe_divide(market_cap, rev_ttm)
+
+    ttm["revenue_ttm"]         = rev_ttm
+    ttm["netIncome_ttm"]       = ni_ttm
+    ttm["grossProfit_ttm"]     = gross_profit_ttm
+    ttm["cashFromOps_ttm"]     = cfo_ttm
+    ttm["capex_ttm"]           = capex_ttm
+    ttm["fcf_ttm"]             = fcf_ttm
+    ttm["eps_ttm"]             = round(trailing_eps, 2) if trailing_eps else None
+    ttm["pe_ttm"]              = round(pe_ttm, 2) if pe_ttm else None
+    ttm["ps_ratio_ttm"]        = round(ps_ttm, 2) if ps_ttm else None
+    ttm["pfcf_ttm"]            = round(pfcf_ttm, 2) if pfcf_ttm else None
+    ttm["peg_ratio"]           = round(peg_ratio, 2) if peg_ratio else None
+    ttm["niMargin_ttm"]        = profit_margin if profit_margin is not None else safe_divide(ni_ttm, rev_ttm)
+    ttm["fcfMargin_ttm"]       = safe_divide(fcf_ttm, rev_ttm)
+    ttm["grossMargin_ttm"]     = gross_margin if gross_margin is not None else safe_divide(gross_profit_ttm, rev_ttm)
+    return ttm
+
+def _extract_shares_history(t: yf.Ticker) -> tuple:
+    sh = {"quarterly_shares": [], "annual_shares": []}
+    annual_shares_map = {}
+    q_inc = t.quarterly_financials
+    if q_inc is not None and not q_inc.empty:
+        for col in q_inc.columns:
+            sv = get_first_valid_val(q_inc, ['Diluted Average Shares'], col)
+            if sv:
+                qt = f"Q{col.quarter} {col.year}"
+                sh["quarterly_shares"].append({"quarter": qt, "shares": sv})
+
+    a_inc = t.financials
+    if a_inc is not None and not a_inc.empty:
+        for col in a_inc.columns:
+            sv = get_first_valid_val(a_inc, ['Diluted Average Shares'], col)
+            if sv:
+                sh["annual_shares"].append({"year": col.year, "shares": sv})
+    
+    q_shares = sh["quarterly_shares"]
+    if q_shares:
+        q_shares.reverse()
+        normalize_shares_history(q_shares, "shares")
+        q_shares.reverse()
+        
+    a_shares = sh["annual_shares"]
+    if a_shares:
+        a_shares.sort(key=lambda x: x['year'])
+        normalize_shares_history(a_shares, "shares")
+        a_shares.sort(key=lambda x: x['year'], reverse=True)
+        annual_shares_map = {x['year']: x['shares'] for x in a_shares}
+    
+    return sh, annual_shares_map
+
+def _extract_annual_historical(t: yf.Ticker, annual_shares_map: dict) -> list:
+    annual_data = []
+    def get_5_years(df):
+        if df is None or df.empty:
+            return pd.DataFrame()
+        return df.iloc[:, :5]
+
+    a_fin = get_5_years(t.financials)
+    a_cf  = get_5_years(t.cashflow)
+    a_bs  = get_5_years(t.balance_sheet)
+
+    hist_prices = t.history(period='10y')
+    annual_prices = {}
+    if not hist_prices.empty:
+        hist_prices.index = pd.to_datetime(hist_prices.index)
+        for year, group in hist_prices.groupby(hist_prices.index.year):
+            annual_prices[year] = float(group['Close'].iloc[-1])
+
+    if not a_fin.empty:
+        columns = sorted(a_fin.columns, key=lambda x: pd.to_datetime(x), reverse=True)[:10]
+        for col in columns:
+            dt   = pd.to_datetime(col)
+            year = dt.year
+
+            rev = get_first_valid_val(a_fin, ['Total Revenue', 'Operating Revenue', 'Revenue'], col)
+            ni  = get_first_valid_val(a_fin, ['Net Income', 'Net Income Common Stockholders'], col)
+            gp  = get_first_valid_val(a_fin, ['Gross Profit'], col)
+
+            cfo = capex = None
+            debt_iss = debt_pay = share_rep = 0.0
+            if not a_cf.empty and col in a_cf.columns:
+                cfo   = get_first_valid_val(a_cf, ['Operating Cash Flow', 'Total Cash From Operating Activities'], col)
+                capex = get_first_valid_val(a_cf, ['Capital Expenditure', 'Capital Expenditures'], col)
+                if capex is not None: capex = abs(capex)
+                raw = get_first_valid_val(a_cf, ['Issuance Of Debt'], col)
+                if raw: debt_iss = float(raw)
+                raw = get_first_valid_val(a_cf, ['Repayment Of Debt'], col)
+                if raw: debt_pay = float(raw)
+                raw = get_first_valid_val(a_cf, ['Common Stock Repurchased', 'Repurchase Of Capital Stock'], col)
+                if raw: share_rep = abs(float(raw))
+
+            fcf = (cfo - capex) if (cfo is not None and capex is not None) else None
+
+            ni_margin  = safe_divide(ni, rev)
+            fcf_margin = safe_divide(fcf, rev)
+            gp_margin  = safe_divide(gp, rev)
+
+            diluted_shares = annual_shares_map.get(year)
+            if not diluted_shares:
+                diluted_shares = get_first_valid_val(a_fin, ['Diluted Average Shares', 'Basic Average Shares'], col)
+
+            pe = pfcf = None
+            if year in annual_prices and ni and diluted_shares and diluted_shares > 0 and ni > 0:
+                pe = safe_divide(annual_prices[year], safe_divide(ni, diluted_shares))
+            if year in annual_prices and fcf and diluted_shares and diluted_shares > 0 and fcf > 0:
+                mcap_approx = annual_prices[year] * diluted_shares
+                pfcf = safe_divide(mcap_approx, fcf)
+
+            annual_data.append({
+                "year":             year,
+                "revenue":          rev,
+                "grossProfit":      gp,
+                "netIncome":        ni,
+                "netIncomeMargin":  ni_margin,
+                "grossMargin":      gp_margin,
+                "cashFromOps":      cfo,
+                "capex":            capex,
+                "fcf":              fcf,
+                "debtIssuance":     debt_iss,
+                "debtPaydown":      debt_pay,
+                "shareRepurchases": share_rep,
+                "dilutedShares":    diluted_shares,
+                "fcfMargin":        fcf_margin,
+                "pe":               pe,
+                "pfcf":             pfcf,
+                "revenueGrowth":    None,
+            })
+
+        annual_data.sort(key=lambda x: x['year'])
+        for i in range(1, len(annual_data)):
+            pv = safe_val(annual_data[i - 1]["revenue"])
+            cv = safe_val(annual_data[i]["revenue"])
+            if pv and cv and pv > 0:
+                annual_data[i]["revenueGrowth"] = safe_divide(cv - pv, pv)
+        annual_data.sort(key=lambda x: x['year'], reverse=True)
+    return annual_data
+
+def _calculate_multi_year_stats(annual_data: list, t: yf.Ticker, info: dict, price_statistics: dict = None) -> dict:
+    stats = {}
+    if not annual_data:
+        return stats
+    
+    years_avail = len(annual_data)
+    def avg_n(key, n):
+        n = min(n, years_avail)
+        return safe_mean([x.get(key) for x in annual_data[:n]])
+
+    def median_n(key, n):
+        n = min(n, years_avail)
+        return safe_median([x.get(key) for x in annual_data[:n]])
+
+    for n in [1, 3, 5, 10]:
+        cagr, actual = best_cagr(annual_data, "revenue", n)
+        stats[f"revenue_cagr_{n}yr"] = cagr
+        stats[f"revenue_cagr_{n}yr_meta"] = {"period": f"{actual}Y"} if actual else None
+
+    if len(annual_data) >= 2:
+        r0 = safe_val(annual_data[0].get("revenue"))
+        r1 = safe_val(annual_data[1].get("revenue"))
+        if r0 and r1 and r1 > 0:
+            stats["revenue_growth_1yr"] = safe_divide(r0 - r1, r1)
+        else:
+            stats["revenue_growth_1yr"] = stats.get("revenue_cagr_1yr")
+    else:
+        stats["revenue_growth_1yr"] = None
+
+    stats["revenue_growth_5yr"]  = stats.get("revenue_cagr_5yr")
+    stats["revenue_growth_10yr"] = stats.get("revenue_cagr_10yr")
+
+    lb = VALUATION_CONFIG["lookback_years"]
+    ni_cagr_5, actual_ni = best_cagr(annual_data, "netIncome", lb)
+    stats["netincome_cagr_5yr"] = ni_cagr_5
+    stats["netincome_cagr_5yr_meta"] = {"period": f"{actual_ni}Y"} if actual_ni else None
+
+    pos_fcf_data = [x for x in annual_data if safe_val(x.get("fcf")) and x["fcf"] > 0]
+    if len(pos_fcf_data) >= 2:
+        fcf_cagr, actual_fcf = best_cagr(pos_fcf_data, "fcf", lb)
+        stats["fcf_cagr_5yr"] = fcf_cagr
+        stats["fcf_cagr_5yr_meta"] = {"period": f"{actual_fcf}Y"} if actual_fcf else None
+    else:
+        stats["fcf_cagr_5yr"] = None
+        stats["fcf_cagr_5yr_meta"] = None
+
+    shares_cagr, actual_sh = best_cagr(annual_data, "dilutedShares", lb)
+    stats["shares_cagr_5yr"] = shares_cagr
+    stats["shares_cagr_5yr_meta"] = {"period": f"{actual_sh}Y"} if actual_sh else None
+
+    for n in [1, lb, 10]:
+        stats[f"netincome_margin_{n}yr"] = avg_n("netIncomeMargin", n)
+        stats[f"fcf_margin_{n}yr"]       = avg_n("fcfMargin", n)
+        stats[f"gross_margin_{n}yr"]     = avg_n("grossMargin", n)
+
+    stats["avg_netincome_margin_5yr"] = stats["netincome_margin_5yr"]
+    stats["avg_netincome_margin_10yr"]= stats["netincome_margin_10yr"]
+    stats["avg_fcf_margin_5yr"]       = stats["fcf_margin_5yr"]
+    stats["avg_fcf_margin_10yr"]      = stats["fcf_margin_10yr"]
+    stats["avg_roic_5yr"]             = safe_val(info.get("returnOnEquity"))
+    stats["avg_roic_10yr"]            = stats["avg_roic_5yr"]
+
+    stats["avg_pe_5yr"]    = avg_n("pe", lb)
+    stats["median_pe_5yr"] = median_n("pe", lb)
+    stats["avg_pfcf_5yr"]  = avg_n("pfcf", lb)
+    stats["median_pfcf_5yr"] = median_n("pfcf", lb)
+
+    stats["avg_ni_abs_5yr"]  = avg_n("netIncome", lb)
+    stats["avg_fcf_abs_5yr"] = avg_n("fcf", lb)
+
+    stats.update(price_statistics or {})
+
+    ltl_5yr_fcf_ratio = None
+    try:
+        a_bs_fresh = t.balance_sheet
+        if not a_bs_fresh.empty:
+            col0 = a_bs_fresh.columns[0]
+            ltd  = get_first_valid_val(a_bs_fresh, ['Long Term Debt'], col0) or 0.0
+            oltl = get_first_valid_val(a_bs_fresh, ['Other Long Term Liabilities', 'Other Non Current Liabilities'], col0) or 0.0
+            ltl  = ltd + oltl
+            if ltl > 0:
+                pos_fcf_vals = [x["fcf"] for x in annual_data[:lb] if safe_val(x.get("fcf")) and x["fcf"] > 0]
+                avg_fcf = safe_mean(pos_fcf_vals) if pos_fcf_vals else None
+                if avg_fcf and avg_fcf > 0:
+                    ltl_5yr_fcf_ratio = safe_divide(ltl, avg_fcf)
+    except Exception as e:
+        logger.warning(f"LTL calc error: {e}")
+    stats["ltl_5yr_fcf_ratio"] = ltl_5yr_fcf_ratio
+    return stats
+
+def _calculate_8_pillar(stats: dict) -> tuple:
+    pillars = {}
+    med_pe   = stats.get("median_pe_5yr")
+    avg_roic = stats.get("avg_roic_5yr")
+    sh_cagr  = stats.get("shares_cagr_5yr")
+    fcf_cagr = stats.get("fcf_cagr_5yr")
+    ni_cagr  = stats.get("netincome_cagr_5yr")
+    rev_cagr = stats.get("revenue_cagr_5yr")
+    ltl_fcf  = stats.get("ltl_5yr_fcf_ratio")
+    med_pfcf = stats.get("median_pfcf_5yr")
+
+    max_pe = VALUATION_CONFIG["max_pe_ratio"]
+    min_roic = VALUATION_CONFIG["min_roic"]
+    max_ltl = VALUATION_CONFIG["max_ltl_fcf_ratio"]
+
+    pillars["pillar_pe_5yr"]      = {"value": med_pe,   "pass": med_pe   is not None and med_pe   < max_pe, "period": "5Y"}
+    pillars["pillar_roic_5yr"]    = {"value": avg_roic, "pass": avg_roic is not None and avg_roic > min_roic, "period": "5Y"}
+    pillars["pillar_shares_trend"]= {"value": sh_cagr,  "pass": sh_cagr  is not None and sh_cagr  < 0, "period": stats.get("shares_cagr_5yr_meta", {}).get("period") if stats.get("shares_cagr_5yr_meta") else "5Y"}
+    pillars["pillar_fcf_cagr"]    = {"value": fcf_cagr, "pass": fcf_cagr is not None and fcf_cagr > 0, "period": stats.get("fcf_cagr_5yr_meta", {}).get("period") if stats.get("fcf_cagr_5yr_meta") else "5Y"}
+    pillars["pillar_ni_cagr"]     = {"value": ni_cagr,  "pass": ni_cagr  is not None and ni_cagr  > 0, "period": stats.get("netincome_cagr_5yr_meta", {}).get("period") if stats.get("netincome_cagr_5yr_meta") else "5Y"}
+    pillars["pillar_rev_cagr"]    = {"value": rev_cagr, "pass": rev_cagr is not None and rev_cagr > 0, "period": stats.get("revenue_cagr_5yr_meta", {}).get("period") if stats.get("revenue_cagr_5yr_meta") else "5Y"}
+    pillars["pillar_ltl_fcf"]     = {"value": ltl_fcf,  "pass": ltl_fcf  is not None and ltl_fcf  < max_ltl, "period": "5Y"}
+    pillars["pillar_pfcf_5yr"]    = {"value": med_pfcf, "pass": med_pfcf is not None and med_pfcf < max_pe, "period": "5Y"}
+
+    score = sum(1 for p in pillars.values() if p.get("pass"))
+    return pillars, score
+
+def _calculate_valuation_defaults(stats: dict) -> dict:
+    vd = {}
+    r_cagr = stats.get("revenue_cagr_5yr") or 0.0
+    vd["mid_revenue_growth"]  = r_cagr
+    vd["low_revenue_growth"]  = max(0.0, r_cagr - 0.03)
+    vd["high_revenue_growth"] = r_cagr + 0.03
+
+    avg_ni_m = stats.get("avg_netincome_margin_5yr") or 0.10
+    vd["mid_ni_margin"]  = avg_ni_m
+    vd["low_ni_margin"]  = max(0.0, avg_ni_m - 0.03)
+    vd["high_ni_margin"] = avg_ni_m + 0.03
+
+    avg_fcf_m = stats.get("avg_fcf_margin_5yr") or 0.08
+    avg_fcf_m_safe = max(0.0, avg_fcf_m)
+    vd["mid_fcf_margin"]  = avg_fcf_m_safe
+    vd["low_fcf_margin"]  = max(0.0, avg_fcf_m_safe - 0.03)
+    vd["high_fcf_margin"] = avg_fcf_m_safe + 0.03
+    
+    med_pe = stats.get("median_pe_5yr")
+    med_pfcf = stats.get("median_pfcf_5yr")
+    sh_cagr = stats.get("shares_cagr_5yr")
+
+    vd["low_pe"]  = max(10.0, (med_pe or 20.0) - 5.0)
+    vd["mid_pe"]  = med_pe or 20.0
+    vd["high_pe"] = min(50.0, (med_pe or 20.0) + 5.0)
+
+    vd["low_pfcf"]  = max(10.0, (med_pfcf or 20.0) - 5.0)
+    vd["mid_pfcf"]  = med_pfcf or 20.0
+    vd["high_pfcf"] = min(50.0, (med_pfcf or 20.0) + 5.0)
+
+    vd["shares_growth"] = min(0.05, max(-0.15, sh_cagr or 0.0))
+    vd["discount_rate"] = 0.09
+    return vd
+
+# ---------------------------------------------------------------------------
+# Main Orchestrator
+# ---------------------------------------------------------------------------
+
+def fetch_stock_data(ticker: str) -> dict:
+    """Main orchestrator for fetching all data."""
+    ticker = ticker.upper().strip()
+    ticker = resolve_ticker(ticker)
+
+    logger.info(f"Fetching stock data for {ticker}")
+    t = make_ticker(ticker)
+
+    with ThreadPoolExecutor(max_workers=7) as executor:
+        futures = [
+            executor.submit(lambda: t.info),
+            executor.submit(lambda: t.quarterly_financials),
+            executor.submit(lambda: t.quarterly_cashflow),
+            executor.submit(lambda: t.financials),
+            executor.submit(lambda: t.cashflow),
+            executor.submit(lambda: t.balance_sheet),
+        ]
+        # Retain this one frame so 52-week, YTD, and lifetime values cannot
+        # accidentally be derived from different adjustment modes.
+        history_future = executor.submit(lambda: t.history(period="max", auto_adjust=True))
+        for future in as_completed(futures):
+            try: future.result()
+            except Exception: pass
+
+    result = {
+        "ticker": ticker,
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "live_quote": {},
+        "ttm_financials": {},
+        "annual_historical": [],
+        "shares_outstanding_history": {"quarterly_shares": [], "annual_shares": []},
+        "derived_multi_year_stats": {},
+        "eight_pillar": {},
+        "valuation_defaults": {},
+        "data_years_available": 0,
+        "chart_data": fetch_chart_data(t, ticker),
+        "price_statistics": {},
+    }
+
+    try:
+        info = t.info
+        if not info or not isinstance(info, dict) or len(info.keys()) == 0:
+            return result
+        
+        try:
+            history_max = history_future.result()
+            result["price_statistics"] = get_price_statistics(history_max)
+        except Exception as e:
+            logger.warning(f"Adjusted price history unavailable for {ticker}: {e}")
+            result["price_statistics"] = get_price_statistics(pd.DataFrame())
+
+        result["live_quote"] = _extract_live_quote(info, result["price_statistics"])
+        result["ttm_financials"] = _extract_ttm_financials(t, info, result["live_quote"])
+        
+        sh, annual_shares_map = _extract_shares_history(t)
+        result["shares_outstanding_history"] = sh
+        
+        annual_data = _extract_annual_historical(t, annual_shares_map)
+        result["annual_historical"] = annual_data
+        result["data_years_available"] = len(annual_data)
+        
+        stats = _calculate_multi_year_stats(annual_data, t, info, result["price_statistics"])
+        result["derived_multi_year_stats"] = stats
+        
+        pillars, score = _calculate_8_pillar(stats)
+        result["eight_pillar"] = pillars
+        result["pillar_score"] = score
+        
+        result["valuation_defaults"] = _calculate_valuation_defaults(stats)
+        
+    except Exception as e:
+        logger.error(f"Error orchestrating fetch for {ticker}: {e}")
+
+    return result
+
+def flatten_response(d: dict) -> dict:
+    flat = {
+        "ticker":              d.get("ticker"),
+        "last_updated":        d.get("last_updated"),
+        "data_years_available":d.get("data_years_available", 0),
+        "pillar_score":        d.get("pillar_score", 0),
+    }
+
+    lq = d.get("live_quote") or {}
+    flat["name"]              = lq.get("name")
+    flat["price"]             = lq.get("price")
+    flat["change"]            = lq.get("change")
+    flat["changePercent"]     = lq.get("changePercent")
+    flat["marketCap"]         = lq.get("marketCap")
+    flat["volume"]            = lq.get("volume")
+    flat["avgVolume"]         = lq.get("avgVolume")
+    flat["week52High"]        = lq.get("week52High")
+    flat["week52Low"]         = lq.get("week52Low")
+    price_stats = d.get("price_statistics") or {}
+    flat["atl"]               = price_stats.get("atl")
+    flat["ytdHigh"]           = price_stats.get("ytdHigh")
+    flat["ytdLow"]            = price_stats.get("ytdLow")
+    flat["priceStatisticsAsOf"] = price_stats.get("as_of")
+    flat["priceStatisticsAdjusted"] = price_stats.get("adjusted", True)
+    flat["sector"]            = lq.get("sector")
+    flat["industry"]          = lq.get("industry")
+    flat["dividendYield"]     = lq.get("dividendYield")
+    flat["forwardDividendYield"] = lq.get("forwardDividendYield")
+    flat["shares_outstanding"]= lq.get("shares_outstanding")
+
+    ttm = d.get("ttm_financials") or {}
+    flat["revenue_ttm"]       = ttm.get("revenue_ttm")
+    flat["netIncome_ttm"]     = ttm.get("netIncome_ttm")
+    flat["grossProfit_ttm"]   = ttm.get("grossProfit_ttm")
+    flat["grossMargin_ttm"]   = ttm.get("grossMargin_ttm")
+    flat["fcf_ttm"]           = ttm.get("fcf_ttm")
+    flat["cashFromOps_ttm"]   = ttm.get("cashFromOps_ttm")
+    flat["capex_ttm"]         = ttm.get("capex_ttm")
+    flat["eps_ttm"]           = ttm.get("eps_ttm")
+    flat["pe_ttm"]            = ttm.get("pe_ttm")
+    flat["ps_ratio_ttm"]      = ttm.get("ps_ratio_ttm")
+    flat["pfcf_ttm"]          = ttm.get("pfcf_ttm")
+    flat["peg_ratio"]         = ttm.get("peg_ratio")
+    flat["niMargin_ttm"]      = ttm.get("niMargin_ttm")
+    flat["fcfMargin_ttm"]     = ttm.get("fcfMargin_ttm")
+
+    soh = d.get("shares_outstanding_history") or {}
+    flat["quarterly_shares"]  = soh.get("quarterly_shares", [])
+    flat["annual_shares"]     = soh.get("annual_shares", [])
+    
+    # Fallback if lq["shares_outstanding"] is None
+    if not flat["shares_outstanding"] and flat["annual_shares"]:
+        flat["shares_outstanding"] = flat["annual_shares"][0]["shares"]
+
+    flat["annual"] = d.get("annual_historical", [])
+
+    # Stats — copy all keys flat
+    stats = d.get("derived_multi_year_stats") or {}
+    for k, v in stats.items():
+        flat[k] = v
+
+    # Explicit frontend aliases
+    flat["revenue_growth_1yr"]  = stats.get("revenue_growth_1yr")
+    flat["revenue_growth_5yr"]  = stats.get("revenue_cagr_5yr")
+    flat["revenue_growth_10yr"] = stats.get("revenue_cagr_10yr")
+    flat["netincome_margin_1yr"]= stats.get("netincome_margin_1yr") or (
+        flat["annual"][0].get("netIncomeMargin") if flat["annual"] else None
+    )
+    flat["fcf_margin_1yr"]      = stats.get("fcf_margin_1yr") or (
+        flat["annual"][0].get("fcfMargin") if flat["annual"] else None
+    )
+    flat["roic_1yr"]            = stats.get("avg_roic_5yr")  # best proxy
+
+    # Pillar values (raw numbers for frontend to evaluate)
+    pillars = d.get("eight_pillar") or {}
+    for backend_key in [
+        "pillar_pe_5yr","pillar_roic_5yr","pillar_fcf_cagr",
+        "pillar_ni_cagr","pillar_rev_cagr","pillar_ltl_fcf","pillar_pfcf_5yr",
+    ]:
+        pdata = pillars.get(backend_key)
+        flat[backend_key] = pdata.get("value") if isinstance(pdata, dict) else pdata
+
+    # pillar_shares_trend → boolean pass/fail
+    pst = pillars.get("pillar_shares_trend")
+    flat["pillar_shares_trend"] = pst.get("pass", False) if isinstance(pst, dict) else bool(pst)
+
+    flat["ath"] = stats.get("ath")
+    flat["valuation_defaults"] = d.get("valuation_defaults") or {}
+    flat["chart_data"]     = d.get("chart_data") or {}
+    return flat

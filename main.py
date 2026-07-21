@@ -1,0 +1,194 @@
+import os
+from datetime import datetime, timezone
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from apscheduler.schedulers.background import BackgroundScheduler
+from contextlib import asynccontextmanager
+
+from config import logger, validate_config
+from cache import load_cache, save_cache, CACHE_DIR
+from stock_service import resolve_ticker, fetch_stock_data, flatten_response, make_ticker, fetch_peer_comparison
+from news_service import fetch_macro_news
+from macro_service import fetch_macro_indicators
+from jobs import refresh_news_cache, refresh_popular_tickers
+import yfinance as yf
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(refresh_news_cache,      'interval', minutes=55)
+    scheduler.add_job(refresh_popular_tickers, 'interval', minutes=65)
+    scheduler.start()
+    app.state.scheduler = scheduler
+    logger.info("APScheduler started.")
+    yield
+    if hasattr(app.state, 'scheduler'):
+        app.state.scheduler.shutdown(wait=False)
+        logger.info("APScheduler stopped.")
+
+app = FastAPI(title='Stock Analysis API', lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['*'],
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
+
+if os.path.exists("static"):
+    app.mount('/static', StaticFiles(directory='static'), name='static')
+
+
+@app.get('/')
+async def root():
+    if os.path.exists("index.html"):
+        return FileResponse('index.html')
+    return {"message": "Stock Analysis API — index.html not found"}
+
+
+@app.get('/api/stock/{ticker}')
+async def get_quote(ticker: str):
+    ticker_input = ticker
+    symbol = resolve_ticker(ticker_input)
+
+    try:
+        stock = yf.Ticker(symbol)
+        info = stock.info
+        
+        if not info or ('regularMarketPrice' not in info and 'currentPrice' not in info):
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"Could not find market data for '{ticker_input}'. Try searching by official ticker (e.g., NFLX, MSFT, RELIANCE.NS)."}
+            )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Search failed for '{ticker_input}': {str(e)}"}
+        )
+
+    cached = load_cache(symbol, max_age_minutes=75)
+    if cached:
+        # Bypass stale cache if it predates the chart_data feature
+        has_chart = isinstance(cached.get("chart_data"), dict) and bool(cached["chart_data"].get("candlestick"))
+        if has_chart:
+            cached["ticker"] = symbol
+            return cached
+        # Fall through to fresh fetch so chart_data is populated
+
+    try:
+        data = fetch_stock_data(symbol)
+        flat = flatten_response(data)
+        save_cache(symbol, flat)
+        return flat
+    except Exception as e:
+        logger.error(f"Error in get_quote for {symbol}: {e}")
+        return JSONResponse(status_code=500, content={"error": f"Error processing {symbol}: {str(e)}"})
+
+
+@app.get('/api/news')
+async def get_news():
+    cached = load_cache("news", max_age_minutes=55)
+    if cached:
+        return cached
+    try:
+        data = fetch_macro_news()
+        save_cache("news", data)
+        return data
+    except Exception as e:
+        logger.error(f"Error in get_news: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get('/api/macro')
+async def get_macro():
+    """Return real macroeconomic indicators independently of the news feed."""
+    cached = load_cache("macro", max_age_minutes=60)
+    if cached:
+        return cached
+    data = fetch_macro_indicators()
+    # Cache partial results as well: this avoids repeatedly hammering a down provider.
+    save_cache("macro", data)
+    return data
+
+
+@app.get('/api/cache/clear/{ticker}')
+async def clear_ticker_cache(ticker: str):
+    """Force-clear cache for a ticker so the next request fetches fresh data."""
+    ticker = ticker.upper().strip()
+    filepath = os.path.join(CACHE_DIR, f"{ticker}.json")
+    removed = False
+    if os.path.exists(filepath):
+        os.remove(filepath)
+        removed = True
+    return {"ticker": ticker, "cache_cleared": removed}
+
+
+@app.get('/api/cache/status')
+async def cache_status():
+    status = {
+        "last_news_update": None,
+        "cached_tickers":   [],
+        "scheduler_running": hasattr(app.state, 'scheduler') and app.state.scheduler.running,
+    }
+    if os.path.exists(CACHE_DIR):
+        for f in os.listdir(CACHE_DIR):
+            if f.endswith('.json'):
+                path = os.path.join(CACHE_DIR, f)
+                mod  = datetime.fromtimestamp(os.path.getmtime(path), timezone.utc).isoformat()
+                if f == "news.json":
+                    status["last_news_update"] = mod
+                else:
+                    status["cached_tickers"].append({"ticker": f.replace('.json', ''), "updated": mod})
+    return status
+
+
+@app.get('/api/peers/{ticker}')
+async def get_peers(ticker: str):
+    """Asynchronously fetch peer comparison data for a given ticker."""
+    ticker = ticker.upper().strip()
+    cache_key = f"peers_{ticker}"
+
+    cached = load_cache(cache_key, max_age_minutes=120)
+    if cached is not None:
+        return cached
+
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info or {}
+        peers = fetch_peer_comparison(ticker, info)
+        save_cache(cache_key, peers)
+        return peers
+    except Exception as e:
+        logger.error(f"Error in get_peers for {ticker}: {e}")
+        return []
+
+
+@app.get('/api/health')
+async def health():
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+@app.get("/api/market_indices")
+async def get_market_indices():
+    try:
+        symbols = {"S&P 500": "^GSPC", "NASDAQ": "^IXIC", "DOW JONES": "^DJI", "VIX (Vol)": "^VIX"}
+        res = []
+        for name, sym in symbols.items():
+            t = make_ticker(sym)
+            info = t.info
+            price = info.get("regularMarketPrice") or info.get("currentPrice") or 0.0
+            change = info.get("regularMarketChangePercent") or 0.0
+            res.append({"name": name, "price": price, "change": change})
+        return res
+    except Exception as e:
+        logger.error(f"Market indices error: {e}")
+        return []
+
+
+if __name__ == '__main__':
+    validate_config()
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run('main:app', host='0.0.0.0', port=port, reload=False)

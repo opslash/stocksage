@@ -1,0 +1,11 @@
+{
+  "AAPL": ["MSFT", "GOOGL", "DELL", "HPQ"],
+  "MSFT": ["AAPL", "GOOGL", "ORCL", "IBM"],
+  "NVDA": ["AMD", "INTC", "TSM", "AVGO"],
+  "TSLA": ["RIVN", "LCID", "F", "GM"],
+  "NFLX": ["DIS", "PARA", "WBD", "AMZN"],
+  "AMZN": ["WMT", "EBAY", "BABA", "TGT"],
+  "GOOGL": ["MSFT", "META", "AMZN", "AAPL"],
+  "META": ["GOOGL", "SNAP", "PINS", "MSFT"],
+  "AMD": ["NVDA", "INTC", "TSM", "QCOM"]
+}
