@@ -460,12 +460,12 @@ def _extract_financial_statements(t: yf.Ticker) -> dict:
     for period in ["annual", "quarterly"]:
         for item in result["income_statement"][period]:
             if item.get("revenue") and item.get("net_income"):
-                item["net_profit_margin"] = (item["net_income"] / item["revenue"]) * 100
+                item["net_profit_margin"] = (item["net_income"] / item["revenue"])
             else:
                 item["net_profit_margin"] = None
                 
             if item.get("tax_provision") is not None and item.get("pretax_income"):
-                item["effective_tax_rate"] = (item["tax_provision"] / item["pretax_income"]) * 100
+                item["effective_tax_rate"] = (item["tax_provision"] / item["pretax_income"])
             else:
                 item["effective_tax_rate"] = None
                 

@@ -1,18 +1,13 @@
-version: "1"
-projects:
-- name: My project
-  environments:
-  - name: Production
-    services:
-    - type: web
-      name: stocksage
-      runtime: docker
-      repo: https://github.com/opslash/stocksage
-      plan: free
-      envVars:
+services:
+  - type: web
+    name: stocksage
+    env: docker
+    repo: https://github.com/opslash/stocksage
+    plan: free
+    region: oregon
+    autoDeploy: true
+    envVars:
       - key: GEMINI_API_KEY
         sync: false
       - key: JWT_SECRET_KEY
         generateValue: true
-      region: oregon
-      autoDeployTrigger: commit

@@ -198,9 +198,8 @@
               </div>
             </div>
           </div>
-          <div class="status-area">
-            <div id="statusDot" class="status-dot"></div>
-            <span id="statusText">No Data</span>
+          <div class="status-area" style="display: flex; align-items: center; gap: 6px; font-weight: 500; color: var(--success);">
+            <span>🟢 Market Open</span>
           </div>
         </div>
       </div>
@@ -256,7 +255,7 @@
               checklist, and intrinsic value estimates.
             </p>
 
-            <div style="width: 100%; max-width: 500px; margin: 0 auto 36px">
+            <div style="width: 100%; max-width: 500px; margin: 0 auto 16px">
               <form id="searchForm" style="position: relative">
                 <div class="search-icon">
                   <svg
@@ -322,13 +321,23 @@
                 ></div>
               </form>
             </div>
+            
+            <div style="display: flex; justify-content: center; gap: 8px; font-size: 0.85rem; flex-wrap: wrap;">
+              <span style="color: var(--text-muted); line-height: 24px;">Trending:</span>
+              <a href="#" class="market-ticker-pill" style="text-decoration: none; padding: 2px 10px;" onclick="document.getElementById('searchInput').value='NVDA'; document.getElementById('searchForm').dispatchEvent(new Event('submit')); return false;">NVDA</a>
+              <a href="#" class="market-ticker-pill" style="text-decoration: none; padding: 2px 10px;" onclick="document.getElementById('searchInput').value='AAPL'; document.getElementById('searchForm').dispatchEvent(new Event('submit')); return false;">AAPL</a>
+              <a href="#" class="market-ticker-pill" style="text-decoration: none; padding: 2px 10px;" onclick="document.getElementById('searchInput').value='TSLA'; document.getElementById('searchForm').dispatchEvent(new Event('submit')); return false;">TSLA</a>
+              <a href="#" class="market-ticker-pill" style="text-decoration: none; padding: 2px 10px;" onclick="document.getElementById('searchInput').value='GOOGL'; document.getElementById('searchForm').dispatchEvent(new Event('submit')); return false;">GOOGL</a>
+              <a href="#" class="market-ticker-pill" style="text-decoration: none; padding: 2px 10px;" onclick="document.getElementById('searchInput').value='MSFT'; document.getElementById('searchForm').dispatchEvent(new Event('submit')); return false;">MSFT</a>
+            </div>
+
 
 
 
           </div>
           
           <!-- Market Movers & Watchlist Widgets -->
-          <div class="dashboard-grid" style="margin-top: 32px;">
+          <div class="dashboard-grid" style="margin-top: 32px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
             <!-- Market Movers -->
             <div class="card">
               <div class="card-header">
@@ -348,6 +357,21 @@
                   <div class="skeleton-text" style="width: 100%; height: 24px;"></div>
                   <div class="skeleton-text" style="width: 100%; height: 24px;"></div>
                 </div>
+              </div>
+            </div>
+
+            <!-- Sector Performance -->
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h2 class="card-title">📊 Sector Performance</h2>
+                  <div class="card-subtitle">Daily returns of major sectors</div>
+                </div>
+              </div>
+              <div id="homeSectorPerformance" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+                <div class="skeleton-text" style="width: 100%; height: 24px;"></div>
+                <div class="skeleton-text" style="width: 100%; height: 24px;"></div>
+                <div class="skeleton-text" style="width: 100%; height: 24px;"></div>
               </div>
             </div>
 
@@ -1026,9 +1050,11 @@
             </div>
             <div class="card-body">
               <div class="financials-controls" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
-                <button class="btn btn-sm btn-outline active" id="btnFinQuarterly" onclick="setFinancialsPeriod('quarterly')">Quarterly</button>
-                <button class="btn btn-sm btn-outline" id="btnFinAnnual" onclick="setFinancialsPeriod('annual')">Annual</button>
+                <button class="btn btn-sm btn-outline active" id="btnFinAnnual" onclick="setFinancialsPeriod('annual')">Annual</button>
+                <button class="btn btn-sm btn-outline" id="btnFinQuarterly" onclick="setFinancialsPeriod('quarterly')">Quarterly</button>
               </div>
+              
+              <div id="fin-executive-summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;"></div>
 
               <!-- Accordion for Income Statement, Balance Sheet, Cash Flow -->
               <div class="accordion" id="financialsAccordion">
@@ -1142,42 +1168,51 @@
           <div class="card" style="margin-bottom: 24px">
             <h2 class="card-title">Stock Screener</h2>
 
-            <div class="chips" style="margin-top: 16px; margin-bottom: 8px">
-              <div class="chip" onclick="applyScreenerPreset('deep_value')">
-                💎 Deep Value
-              </div>
-              <div class="chip" onclick="applyScreenerPreset('high_growth')">
-                🚀 High-Growth Tech
-              </div>
-              <div
-                class="chip"
-                onclick="applyScreenerPreset('quality_compounders')"
-              >
-                👑 Quality Compounders
-              </div>
-              <div class="chip" onclick="applyScreenerPreset('clear')">
-                Clear Filters
-              </div>
-            </div>
 
             <div style="display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap;">
               <!-- Left Side: Query Editor -->
               <div style="flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 12px;">
-                <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">
-                  Query Editor
-                  <a href="#" style="float: right; color: var(--accent);" onclick="alert('Supported fields:\nMarket Cap, PE Ratio, ROIC, ROE, ROA, Revenue Growth, Debt to Equity, Dividend Yield, Price to Book, Price to FCF, Gross Margin, Operating Margin, Net Margin, Volume, Price, Sector'); return false;">View Fields</a>
-                </label>
-                <textarea 
-                  id="scr-advanced-query" 
-                  style="width: 100%; height: 120px; padding: 16px; font-family: var(--font-mono); resize: vertical; line-height: 1.6; font-size: 0.95rem; border: 1px solid var(--border-color); border-radius: 12px; background: rgba(0, 0, 0, 0.2); color: var(--text-main); outline: none; transition: all 0.2s; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);" 
-                  onfocus="this.style.borderColor='var(--accent)'; this.style.boxShadow='0 0 0 3px rgba(125, 211, 252, 0.2), inset 0 2px 4px rgba(0,0,0,0.1)'" 
-                  onblur="this.style.borderColor='var(--border-color)'; this.style.boxShadow='inset 0 2px 4px rgba(0,0,0,0.1)'"
-                  placeholder="e.g. Market Cap > 1B AND PE Ratio < 20 AND ROE > 15"
-                ></textarea>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">
+                    Query Builder
+                    <a href="#" style="margin-left: 10px; color: var(--accent);" onclick="alert('Supported fields:\nMarket Cap, PE Ratio, ROIC, ROE, ROA, Revenue Growth, Debt to Equity, Dividend Yield, Price to Book, Price to FCF, Gross Margin, Operating Margin, Net Margin, Volume, Price, Sector'); return false;">View Fields</a>
+                  </label>
+                  <div class="financials-controls" style="display: flex; gap: 8px;">
+                    <button class="btn btn-sm btn-outline active" id="btnScrAi" onclick="toggleScreenerMode('ai')">✨ Ask AI</button>
+                    <button class="btn btn-sm btn-outline" id="btnScrManual" onclick="toggleScreenerMode('manual')">Manual Editor</button>
+                  </div>
+                </div>
+
+                <div class="chips" style="gap: 6px; flex-wrap: wrap;">
+                  <div class="chip" style="font-size: 0.8rem; padding: 4px 10px;" onclick="applyScreenerPreset('deep_value')">💎 Deep Value</div>
+                  <div class="chip" style="font-size: 0.8rem; padding: 4px 10px;" onclick="applyScreenerPreset('high_growth')">🚀 High-Growth Tech</div>
+                  <div class="chip" style="font-size: 0.8rem; padding: 4px 10px;" onclick="applyScreenerPreset('quality_compounders')">👑 Quality Compounders</div>
+                  <div class="chip" style="font-size: 0.8rem; padding: 4px 10px;" onclick="applyScreenerPreset('high_dividend')">💡 High Dividend</div>
+                </div>
+
+                <!-- AI Mode -->
+                <div id="scr-ai-mode" style="display: block;">
+                  <div style="position: relative; margin-bottom: 8px;">
+                    <input type="text" id="scr-ai-input" placeholder="e.g., Show me cheap tech companies with strong cash flow and high ROE..." style="width: 100%; padding: 16px; font-size: 0.95rem; border: 1px solid var(--border-color); border-radius: 12px; background: rgba(0, 0, 0, 0.2); color: var(--text-main); outline: none; transition: all 0.2s; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);" onkeypress="if (event.key === 'Enter') { event.preventDefault(); askAiScreener(); }" />
+                  </div>
+                  <div id="scr-ai-explanation" style="font-size: 0.85rem; color: var(--success); margin-top: 8px; display: none;"></div>
+                </div>
+
+                <!-- Manual Mode -->
+                <div id="scr-manual-mode" style="display: none;">
+                  <textarea 
+                    id="scr-advanced-query" 
+                    style="width: 100%; height: 120px; padding: 16px; font-family: var(--font-mono); resize: vertical; line-height: 1.6; font-size: 0.95rem; border: 1px solid var(--border-color); border-radius: 12px; background: rgba(0, 0, 0, 0.2); color: var(--text-main); outline: none; transition: all 0.2s; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);" 
+                    onfocus="this.style.borderColor='var(--accent)'; this.style.boxShadow='0 0 0 3px rgba(125, 211, 252, 0.2), inset 0 2px 4px rgba(0,0,0,0.1)'" 
+                    onblur="this.style.borderColor='var(--border-color)'; this.style.boxShadow='inset 0 2px 4px rgba(0,0,0,0.1)'"
+                    placeholder="e.g. Market Cap > 1B AND PE Ratio < 20 AND ROE > 15"
+                  ></textarea>
+                </div>
                 
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 8px;">
                   <div style="display: flex; gap: 12px;">
-                    <button class="btn btn-primary" id="screener-run-btn" style="padding: 8px 16px;" onclick="runAdvancedScreener()">Run Scan</button>
+                    <button class="btn btn-primary" id="screener-run-btn" style="padding: 8px 16px;" onclick="if(document.getElementById('scr-ai-mode').style.display !== 'none') { askAiScreener(); } else { runAdvancedScreener(); }">Run Scan</button>
+                    <button class="btn btn-outline" style="padding: 8px 16px;" onclick="applyScreenerPreset('clear')">Clear</button>
                     <button class="btn btn-outline" style="padding: 8px 16px;" onclick="saveCurrentScreen()">Save Screen</button>
                   </div>
                   <button class="btn btn-outline" style="padding: 8px 16px; border-color: var(--success); color: var(--success);" onclick="exportScreenerCSV()">
@@ -1298,20 +1333,40 @@
         <!-- PAGE: VALUATION -->
         <div id="page-valuation" class="page">
           <div class="card">
-            <div class="card-header">
-              <div>
-                <h2 class="card-title">Intrinsic Value Calculator</h2>
-                <div class="card-subtitle">
-                  Discounted earnings model — edit any cell to recalculate
-                  instantly
+            <div class="card-header" style="flex-direction: column; align-items: stretch; gap: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                  <h2 class="card-title">Valuation Engine</h2>
+                  <div class="card-subtitle">Blended multi-scenario discounted cash flow & earnings model</div>
+                </div>
+                <button class="btn btn-primary" onclick="resetValuationDefaults()">↺ Reset Defaults</button>
+              </div>
+              
+              <!-- VERDICT BANNER -->
+              <div style="background: var(--surface2); padding: 24px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 4px;">Intrinsic Fair Value Range</div>
+                    <div class="mono" style="font-size: 2.2rem; font-weight: bold; color: var(--text-main); line-height: 1.2;" id="valFairValueRange">
+                      $0.00 – $0.00
+                    </div>
+                  </div>
+                  <div id="valVerdictPill" style="padding: 10px 20px; border-radius: 30px; font-weight: bold; font-size: 1rem; background: rgba(255,255,255,0.05); color: var(--text-muted);">
+                    AWAITING DATA
+                  </div>
+                </div>
+                
+                <!-- UPSIDE / DOWNSIDE METER -->
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted);">
+                    <span>🔴 Bear: <span id="valMeterBear" class="mono text-danger">$0.00</span></span>
+                    <span>📊 Base: <span id="valMeterBase" class="mono" style="color: var(--primary);">$0.00</span></span>
+                    <span>🟢 Bull: <span id="valMeterBull" class="mono text-success">$0.00</span></span>
+                  </div>
+                  <div style="height: 8px; background: linear-gradient(90deg, var(--danger) 0%, var(--primary) 50%, var(--success) 100%); border-radius: 4px; opacity: 0.8; position: relative;">
+                  </div>
                 </div>
               </div>
-              <button
-                class="btn btn-primary"
-                onclick="resetValuationDefaults()"
-              >
-                ↺ Reset Defaults
-              </button>
             </div>
 
             <div class="val-controls">
@@ -1354,8 +1409,15 @@
               </div>
             </div>
 
-            <div class="assumptions-table">
-              <div class="section-label">Scenario Assumptions (editable)</div>
+            <div class="assumptions-table" style="margin-top: 24px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 12px;">
+                <div class="section-label" style="margin-bottom: 0;">Scenario Assumptions (editable)</div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                  <button class="btn btn-sm btn-outline" onclick="applyValuationPreset('wall_street')">🔘 Wall Street Analyst</button>
+                  <button class="btn btn-sm btn-outline" onclick="applyValuationPreset('historical')">🔘 5-Year Historical</button>
+                  <button class="btn btn-sm btn-outline" onclick="applyValuationPreset('conservative')">🔘 Conservative / Safe</button>
+                </div>
+              </div>
               <div class="table-container">
                 <table>
                   <thead>
@@ -1374,198 +1436,7 @@
             <div class="val-results" id="valResults"></div>
           </div>
 
-          <!-- 2-Stage DCF Calculator -->
-          <div class="card dcf-calculator-card" style="margin-top: 24px">
-            <div class="card-header">
-              <div>
-                <h2 class="card-title">2-Stage DCF Calculator</h2>
-                <div class="card-subtitle">
-                  Real-time fair value based on Free Cash Flow projections
-                </div>
-              </div>
-              <div
-                id="dcf-badge"
-                class="badge"
-                style="
-                  font-size: 14px;
-                  padding: 6px 12px;
-                  background: var(--surface2);
-                  color: var(--text-muted);
-                "
-              >
-                Awaiting Data
-              </div>
-            </div>
 
-            <div
-              class="dashboard-grid"
-              style="grid-template-columns: 1fr 1fr; align-items: start"
-            >
-              <!-- Inputs -->
-              <div style="display: flex; flex-direction: column; gap: 16px">
-                <div class="dcf-input-group">
-                  <div
-                    style="
-                      display: flex;
-                      justify-content: space-between;
-                      margin-bottom: 8px;
-                    "
-                  >
-                    <label class="control-label"
-                      >Short-term FCF Growth (Yrs 1-5)</label
-                    >
-                    <span
-                      id="dcf-st-growth-val"
-                      class="mono"
-                      style="color: var(--primary)"
-                      >8.0%</span
-                    >
-                  </div>
-                  <input
-                    type="range"
-                    id="dcf-st-growth"
-                    min="-20"
-                    max="50"
-                    step="0.5"
-                    value="8.0"
-                    oninput="
-                      updateDcfVal('st-growth');
-                      calculateDCF();
-                    "
-                  />
-                </div>
-
-                <div class="dcf-input-group">
-                  <div
-                    style="
-                      display: flex;
-                      justify-content: space-between;
-                      margin-bottom: 8px;
-                    "
-                  >
-                    <label class="control-label">Terminal Growth Rate</label>
-                    <span
-                      id="dcf-term-growth-val"
-                      class="mono"
-                      style="color: var(--primary)"
-                      >2.5%</span
-                    >
-                  </div>
-                  <input
-                    type="range"
-                    id="dcf-term-growth"
-                    min="0"
-                    max="6"
-                    step="0.1"
-                    value="2.5"
-                    oninput="
-                      updateDcfVal('term-growth');
-                      calculateDCF();
-                    "
-                  />
-                </div>
-
-                <div class="dcf-input-group">
-                  <div
-                    style="
-                      display: flex;
-                      justify-content: space-between;
-                      margin-bottom: 8px;
-                    "
-                  >
-                    <label class="control-label">Discount Rate (WACC)</label>
-                    <span
-                      id="dcf-wacc-val"
-                      class="mono"
-                      style="color: var(--primary)"
-                      >9.0%</span
-                    >
-                  </div>
-                  <input
-                    type="range"
-                    id="dcf-wacc"
-                    min="4"
-                    max="20"
-                    step="0.1"
-                    value="9.0"
-                    oninput="
-                      updateDcfVal('wacc');
-                      calculateDCF();
-                    "
-                  />
-                </div>
-              </div>
-
-              <!-- Output Gauge / Display -->
-              <div
-                class="dcf-results"
-                style="
-                  background: var(--surface2);
-                  padding: 24px;
-                  border-radius: 12px;
-                  border: 1px solid var(--border);
-                  text-align: center;
-                "
-              >
-                <div
-                  style="
-                    color: var(--text-muted);
-                    font-size: 0.9rem;
-                    margin-bottom: 8px;
-                  "
-                >
-                  Intrinsic Fair Value / Share
-                </div>
-                <div
-                  id="dcf-fair-value"
-                  class="mono"
-                  style="
-                    font-size: 2.5rem;
-                    font-weight: bold;
-                    color: var(--text-main);
-                    margin-bottom: 4px;
-                  "
-                >
-                  $0.00
-                </div>
-                <div
-                  style="
-                    display: flex;
-                    justify-content: center;
-                    gap: 16px;
-                    margin-top: 16px;
-                    padding-top: 16px;
-                    border-top: 1px solid var(--border-bright);
-                  "
-                >
-                  <div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted)">
-                      Current Price
-                    </div>
-                    <div
-                      id="dcf-current-price"
-                      class="mono"
-                      style="font-size: 1.1rem; color: var(--text-main)"
-                    >
-                      $0.00
-                    </div>
-                  </div>
-                  <div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted)">
-                      Upside/Downside
-                    </div>
-                    <div
-                      id="dcf-upside"
-                      class="mono"
-                      style="font-size: 1.1rem; color: var(--success)"
-                    >
-                      +0.0%
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </main>
@@ -1715,7 +1586,24 @@
     </div>
 
     <!-- API Settings Modal -->
-    <div id="settingsModal" class="modal-overlay" style="display: none;">
+<div
+  id="settingsModal"
+  class="modal"
+  style="
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+  "
+  onclick="if(event.target === this) closeSettingsModal()"
+>
       <div class="modal-content" style="max-width: 500px;">
         <div class="modal-header">
           <h3>⚙️ API Settings</h3>

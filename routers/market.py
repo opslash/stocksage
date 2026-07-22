@@ -90,6 +90,62 @@ async def get_market_indices():
         logger.error(f"Market indices error: {e}")
         return []
 
+@router.get("/sector_performance")
+async def get_sector_performance():
+    cached = load_cache("sector_performance", max_age_minutes=15)
+    if cached:
+        return cached
+
+    try:
+        symbols = {
+            "Technology": "XLK",
+            "Financials": "XLF",
+            "Healthcare": "XLV",
+            "Consumer Disc.": "XLY",
+            "Energy": "XLE",
+            "Industrials": "XLI"
+        }
+        import yfinance as yf
+        import pandas as pd
+        
+        tickers = " ".join(symbols.values())
+        data = yf.download(tickers, period="5d", progress=False)
+        
+        res = []
+        for name, sym in symbols.items():
+            try:
+                if isinstance(data.columns, pd.MultiIndex):
+                    if "Close" in data.columns.levels[0]:
+                        series = data["Close"][sym].dropna()
+                    else:
+                        series = data.xs(key=sym, level=1, axis=1)["Close"].dropna()
+                else:
+                    series = data["Close"].dropna()
+                    
+                if len(series) >= 2:
+                    current_price = float(series.iloc[-1])
+                    prev_close = float(series.iloc[-2])
+                elif len(series) == 1:
+                    current_price = float(series.iloc[-1])
+                    prev_close = current_price
+                else:
+                    res.append({"name": name, "price": 0.0, "change": 0.0})
+                    continue
+                    
+                change_pct = ((current_price - prev_close) / prev_close) * 100 if prev_close else 0.0
+                res.append({"name": name, "price": current_price, "change": change_pct})
+            except Exception as e:
+                logger.error(f"Error parsing sector {name}: {e}")
+                res.append({"name": name, "price": 0.0, "change": 0.0})
+                
+        # Sort by change descending
+        res.sort(key=lambda x: x["change"], reverse=True)
+        save_cache("sector_performance", res)
+        return res
+    except Exception as e:
+        logger.error(f"Sector performance error: {e}")
+        return []
+
 @router.get("/market_movers")
 async def get_market_movers():
     """Returns top gainers, losers, and volume leaders for a predefined set of popular mega caps."""

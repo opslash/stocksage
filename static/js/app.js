@@ -54,6 +54,7 @@ const els = {
   statusDot: document.getElementById("statusDot"),
   statusText: document.getElementById("statusText"),
 };
+window.els = els;
 
 // ── Utilities ─────────────────────────────────────
 function showToast(msg, type = "error") {
@@ -129,6 +130,7 @@ document.addEventListener("DOMContentLoaded", () => {
   fetchMarketIndices();
   fetchWatchlist();
   if (typeof fetchMarketMovers === "function") fetchMarketMovers();
+  if (typeof fetchSectorPerformance === "function") fetchSectorPerformance();
   if (typeof renderHomeWatchlistPreview === "function") renderHomeWatchlistPreview();
   setInterval(fetchNews, 300000);
   setInterval(fetchMacro, 300000);
@@ -136,9 +138,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Setup Initial Route
   if (!window.location.hash) {
-    navigateTo("home");
+    handleRoute("#home");
   } else {
-    navigateTo(window.location.hash.substring(1));
+    handleRoute(window.location.hash);
   }
 });
 
@@ -217,7 +219,27 @@ async function fetchMarketIndices() {
 }
 
 // ── Routing ───────────────────────────────────────
-function navigateTo(pageId) {
+// ── Routing Utils ──────────────────────────────────
+function parseHash(hash) {
+  const raw = hash.startsWith("#") ? hash.substring(1) : hash;
+  const [pageId, queryString] = raw.split("?");
+  const params = {};
+  if (queryString) {
+    const urlParams = new URLSearchParams(queryString);
+    for (const [key, value] of urlParams) {
+      params[key] = value;
+    }
+  }
+  return { pageId: pageId || "home", params };
+}
+
+window.addEventListener("hashchange", () => {
+  handleRoute(window.location.hash);
+});
+
+async function handleRoute(hash) {
+  let { pageId, params } = parseHash(hash);
+
   if (
     ![
       "home",
@@ -229,9 +251,31 @@ function navigateTo(pageId) {
       "screener",
       "financials"
     ].includes(pageId)
-  )
+  ) {
     pageId = "home";
-  window.location.hash = pageId;
+  }
+
+  const stockPages = ["stock-analysis", "valuation", "financials", "company-news"];
+  let tickerToFetch = null;
+
+  if (stockPages.includes(pageId)) {
+    let ticker = params.ticker;
+    if (!ticker) {
+      ticker = sessionStorage.getItem("lastTicker") || AppState.currentTicker || "NVDA";
+      // Redirect to include ticker in URL without pushing a new history state if possible
+      const newHash = `#${pageId}?ticker=${ticker}`;
+      window.history.replaceState(null, "", window.location.pathname + window.location.search + newHash);
+      params.ticker = ticker;
+    }
+    ticker = params.ticker.toUpperCase();
+    sessionStorage.setItem("lastTicker", ticker);
+    AppState.currentTicker = ticker;
+
+    // Trigger data fetch if we don't have data for this ticker
+    if (!AppState.stockData || window.currentStock?.ticker !== ticker) {
+      tickerToFetch = ticker;
+    }
+  }
 
   // Update Pages
   document
@@ -257,6 +301,32 @@ function navigateTo(pageId) {
     if (!tbody || tbody.innerHTML.includes("Select filters")) {
       // Don't auto-fetch, let user run it.
     }
+  }
+  // Render financials if needed
+  if (pageId === "financials" && typeof loadFinancials === "function") {
+    loadFinancials();
+  }
+
+  // Fetch data if needed, AFTER UI has transitioned
+  if (tickerToFetch && typeof fetchStockDataPipeline === "function") {
+    // Inject skeletons for visual feedback if we're on a stock page
+    if (typeof injectSkeletons === "function") {
+      injectSkeletons();
+    }
+    await fetchStockDataPipeline(tickerToFetch);
+  }
+}
+
+function navigateTo(pageId, params = {}) {
+  let url = `#${pageId}`;
+  if (Object.keys(params).length > 0) {
+    const qs = new URLSearchParams(params).toString();
+    url += `?${qs}`;
+  }
+  if (window.location.hash === url || window.location.hash === "") {
+    handleRoute(url);
+  } else {
+    window.location.hash = url;
   }
 }
 window.navigateTo = navigateTo;
@@ -318,7 +388,16 @@ function showLoading(on) {
 // ── Search ────────────────────────────────────────
 let searchAbortController = null;
 
-async function searchTicker(ticker) {
+function searchTicker(ticker) {
+  ticker = ticker.trim().toUpperCase();
+  if (!ticker) return;
+  const { pageId } = parseHash(window.location.hash);
+  const stockPages = ["stock-analysis", "valuation", "financials", "company-news"];
+  const targetPage = stockPages.includes(pageId) ? pageId : "stock-analysis";
+  navigateTo(targetPage, { ticker });
+}
+
+async function fetchStockDataPipeline(ticker) {
   ticker = ticker.trim().toUpperCase();
   if (!ticker) return;
 
@@ -331,14 +410,13 @@ async function searchTicker(ticker) {
   AppState.loading = true;
 
   els.searchInput.value = ticker;
-  els.statusText.textContent = "Fetching live data…";
-  els.statusDot.classList.remove("live");
+  if (els.statusText) els.statusText.textContent = "Fetching live data…";
+  if (els.statusDot) els.statusDot.classList.remove("live");
   showLoading(true);
 
-  navigateTo("stock-analysis");
   injectSkeletons();
 
-  const prevTime = els.statusText.textContent;
+  const prevTime = els.statusText ? els.statusText.textContent : "Fetching live data…";
 
   try {
     const res = await fetchWithRetry(
@@ -359,8 +437,8 @@ async function searchTicker(ticker) {
     const updatedAt = data.last_updated
       ? new Date(data.last_updated).toLocaleTimeString()
       : "now";
-    els.statusText.textContent = `Live · ${updatedAt}`;
-    els.statusDot.classList.add("live");
+    if (els.statusText) els.statusText.textContent = `Live · ${updatedAt}`;
+    if (els.statusDot) els.statusDot.classList.add("live");
 
     // Resolved ticker badge
     const badgeEl = document.getElementById("resolvedTickerBadge");
@@ -384,7 +462,6 @@ async function searchTicker(ticker) {
       subtitle.innerHTML = "1Y Daily · Candlestick · SMA-50 · SMA-200 · Volume";
 
     renderAll(data);
-    navigateTo("stock-analysis");
     showToast(
       `${data.live_quote?.name || data.ticker} loaded successfully`,
       "success",
@@ -411,11 +488,13 @@ async function searchTicker(ticker) {
     }
     showToast(err.message, "error");
     if (AppState.stockData) {
-      els.statusText.textContent =
-        prevTime === "Fetching live data…" ? "Live" : prevTime;
-      els.statusDot.classList.add("live");
+      if (els.statusText) {
+        els.statusText.textContent =
+          prevTime === "Fetching live data…" ? "Live" : prevTime;
+      }
+      if (els.statusDot) els.statusDot.classList.add("live");
     } else {
-      els.statusText.textContent = "Invalid Symbol";
+      if (els.statusText) els.statusText.textContent = "Invalid Symbol";
     }
     console.error("searchTicker error:", err);
 
@@ -440,6 +519,7 @@ async function searchTicker(ticker) {
   }
 }
 window.searchTicker = searchTicker;
+window.fetchStockDataPipeline = fetchStockDataPipeline;
 
 function renderAll(data) {
   renderHero(data);
@@ -451,7 +531,7 @@ function renderAll(data) {
   populateValuationDefaults(data);
   if (typeof renderStockNews === "function") renderStockNews(data);
   if (typeof fetchSWOTAnalysis === "function") fetchSWOTAnalysis(data);
-  if (typeof initDCFCalculator === "function") initDCFCalculator(data);
+
 
   // Chart engine — TradingView Lightweight Charts
   if (typeof renderStockChart === "function" && data.chart_data) {
@@ -995,8 +1075,8 @@ function resetValuationDefaults() {
   if (!AppState.stockData) return;
   const def = AppState.stockData.valuation_defaults || {};
   const v = AppState.valuationInputs.assumptions;
-  const pct = (value) => (Number.isFinite(value) ? value * 100 : null);
-  const val = (value) => (Number.isFinite(value) ? value : null);
+  const pct = (value) => (Number.isFinite(value) ? Math.round(value * 1000) / 10 : null);
+  const val = (value) => (Number.isFinite(value) ? Math.round(value * 100) / 100 : null);
   // Defaults are supplied by the ticker's own history; never silently insert
   // generic multiples/margins for companies with missing statements.
   v.low = {
@@ -1031,6 +1111,59 @@ function resetValuationDefaults() {
 }
 window.resetValuationDefaults = resetValuationDefaults;
 
+window.applyValuationPreset = function(type) {
+  if (!AppState.stockData) return;
+  const def = AppState.stockData.valuation_defaults || {};
+  const v = AppState.valuationInputs.assumptions;
+  
+  if (!def.mid_revenue_growth && def.mid_revenue_growth !== 0) return;
+
+  const pct = (value) => (Number.isFinite(value) ? Math.round(value * 1000) / 10 : null);
+  const val = (value) => (Number.isFinite(value) ? Math.round(value * 100) / 100 : null);
+
+  const baseRev = pct(def.mid_revenue_growth) || 5;
+  const baseNi = pct(def.mid_ni_margin) || 10;
+  const baseFcf = pct(def.mid_fcf_margin) || 10;
+  const basePe = val(def.mid_pe) || 15;
+  const basePfcf = val(def.mid_pfcf) || 15;
+  const baseShares = pct(def.mid_shares_growth) || 0;
+  const baseWacc = pct(def.mid_discount_rate) || 9;
+
+  if (type === 'wall_street') {
+    ["low", "mid", "high"].forEach(s => {
+      let m = s === "low" ? 0.8 : s === "mid" ? 1.2 : 1.5;
+      v[s] = {
+        revGrowth: Math.round(baseRev * m * 10) / 10,
+        niMargin: Math.round(baseNi * (s === "low" ? 0.9 : s === "mid" ? 1.1 : 1.3) * 10) / 10,
+        fcfMargin: Math.round(baseFcf * (s === "low" ? 0.9 : s === "mid" ? 1.1 : 1.3) * 10) / 10,
+        pe: Math.round(basePe * m * 10) / 10,
+        pfcf: Math.round(basePfcf * m * 10) / 10,
+        sharesGrowth: Math.round(baseShares * 0.5 * 10) / 10,
+        discountRate: Math.max(6, Math.round((baseWacc - (s === "high" ? 2 : s === "mid" ? 1 : 0)) * 10) / 10)
+      };
+    });
+  } else if (type === 'historical') {
+    resetValuationDefaults();
+    return;
+  } else if (type === 'conservative') {
+    ["low", "mid", "high"].forEach(s => {
+      let m = s === "low" ? 0.3 : s === "mid" ? 0.5 : 0.8;
+      v[s] = {
+        revGrowth: Math.round(baseRev * m * 10) / 10,
+        niMargin: Math.round(baseNi * m * 10) / 10,
+        fcfMargin: Math.round(baseFcf * m * 10) / 10,
+        pe: Math.round(Math.min(15, basePe * m) * 10) / 10,
+        pfcf: Math.round(Math.min(15, basePfcf * m) * 10) / 10,
+        sharesGrowth: Math.round(baseShares * 1.5 * 10) / 10,
+        discountRate: Math.round((baseWacc + (s === "low" ? 3 : s === "mid" ? 2 : 1)) * 10) / 10
+      };
+    });
+  }
+
+  renderAssumptionsTable();
+  calculateValuation();
+};
+
 function renderAssumptionsTable() {
   const v = AppState.valuationInputs.assumptions;
   const rows = [
@@ -1048,10 +1181,19 @@ function renderAssumptionsTable() {
     <tr><td>${r.label}</td>${["low", "mid", "high"]
       .map(
         (s) => `
-      <td><input type="number" step="0.01" class="assumption-input"
-        id="inp_${s}_${r.id}" data-scenario="${s}" data-field="${r.id}"
-        value="${Number.isFinite(v[s][r.id]) ? v[s][r.id].toFixed(2) : ""}"
-        oninput="updateAssumption(this)"></td>`,
+      <td>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input type="number" step="0.1" class="assumption-input" style="width: 70px;"
+            id="inp_${s}_${r.id}" data-scenario="${s}" data-field="${r.id}"
+            value="${Number.isFinite(v[s][r.id]) ? v[s][r.id].toFixed(1) : ""}"
+            oninput="updateAssumption(this)">
+          ${(r.id.includes('Growth') || r.id.includes('Margin') || r.id === 'discountRate') ? 
+            `<input type="range" min="${r.id.includes('Margin') || r.id === 'discountRate' ? 0 : -20}" max="${r.id.includes('Margin') || r.id === 'discountRate' ? 50 : 50}" step="0.5" 
+              style="width: 60px;" 
+              value="${Number.isFinite(v[s][r.id]) ? v[s][r.id] : 0}"
+              oninput="document.getElementById('inp_${s}_${r.id}').value = this.value; updateAssumption(document.getElementById('inp_${s}_${r.id}'))">` : ''}
+        </div>
+      </td>`
       )
       .join("")}</tr>`,
     )
@@ -1062,6 +1204,13 @@ function updateAssumption(el) {
   const value = Number(el.value);
   AppState.valuationInputs.assumptions[el.dataset.scenario][el.dataset.field] =
     Number.isFinite(value) ? value : null;
+    
+  // Sync the slider if this was the number input being typed into
+  if (el.type === 'number') {
+    const slider = el.parentElement.querySelector('input[type="range"]');
+    if (slider) slider.value = value;
+  }
+  
   calculateValuation();
 }
 window.updateAssumption = updateAssumption;
@@ -1073,6 +1222,7 @@ function calculateValuation() {
   const currRev = d.revenue_ttm;
   const currShares = d.shares_outstanding;
   const currPrice = d.price;
+  const currFCF = d.fcf_ttm || (currRev * 0.1);
 
   if (
     !isValid(currRev) ||
@@ -1084,6 +1234,7 @@ function calculateValuation() {
   ) {
     document.getElementById("valResults").innerHTML =
       '<p style="text-align:center;padding:24px;color:var(--text-muted);">Insufficient data for valuation.</p>';
+    document.getElementById("valVerdictPill").textContent = "INSUFFICIENT DATA";
     return;
   }
 
@@ -1108,7 +1259,7 @@ function calculateValuation() {
       pfcf > 0 &&
       dr > -1;
     if (!valid) {
-      res[s] = { fvPE: null, fvPFCF: null, fvAvg: null };
+      res[s] = { fvPE: null, fvPFCF: null, fvDCF: null, fvAvg: null };
       return;
     }
 
@@ -1121,14 +1272,29 @@ function calculateValuation() {
     const fvPE = fNI > 0 && fShares > 0 ? (fNI * pe) / fShares / divisor : null;
     const fvPFCF =
       fFCF > 0 && fShares > 0 ? (fFCF * pfcf) / fShares / divisor : null;
-    const values = [fvPE, fvPFCF].filter(
+      
+    let fvDCF = null;
+    const tg = s === "low" ? 0.02 : s === "mid" ? 0.025 : 0.03;
+    if (currFCF > 0 && dr > tg) {
+      let pvFcfSum = 0;
+      let projectedFcf = currFCF;
+      for (let i = 1; i <= N; i++) {
+        projectedFcf = projectedFcf * (1 + rev_g);
+        pvFcfSum += projectedFcf / Math.pow(1 + dr, i);
+      }
+      const terminalValue = (projectedFcf * (1 + tg)) / (dr - tg);
+      const pvTerminalValue = terminalValue / Math.pow(1 + dr, N);
+      fvDCF = (pvFcfSum + pvTerminalValue) / currShares;
+    }
+
+    const values = [fvPE, fvPFCF, fvDCF].filter(
       (value) => Number.isFinite(value) && value > 0,
     );
     const fvAvg = values.length
       ? values.reduce((sum, value) => sum + value, 0) / values.length
       : null;
 
-    res[s] = { fvPE, fvPFCF, fvAvg };
+    res[s] = { fvPE, fvPFCF, fvDCF, fvAvg };
   });
 
   renderValuationResults(res, currPrice);
@@ -1148,17 +1314,48 @@ function renderValuationResults(res, price) {
   const valTxt = (d) =>
     d === null ? "" : d >= 0 ? "Undervalued" : "Overvalued";
 
+  const baseAvg = res.mid.fvAvg;
+  const bearAvg = res.low.fvAvg;
+  const bullAvg = res.high.fvAvg;
+  
+  if (baseAvg > 0) {
+    document.getElementById("valFairValueRange").textContent = `$${(bearAvg || 0).toFixed(2)} – $${(bullAvg || 0).toFixed(2)}`;
+    
+    const baseUpside = diff(baseAvg);
+    const verdictPill = document.getElementById("valVerdictPill");
+    if (baseUpside > 0) {
+      verdictPill.textContent = `🟩 UNDERVALUED (+${(baseUpside * 100).toFixed(1)}% Upside)`;
+      verdictPill.style.background = "rgba(34, 197, 94, 0.15)";
+      verdictPill.style.color = "var(--success)";
+    } else {
+      verdictPill.textContent = `🟥 OVERVALUED (${(baseUpside * 100).toFixed(1)}% Downside)`;
+      verdictPill.style.background = "rgba(239, 68, 68, 0.15)";
+      verdictPill.style.color = "var(--danger)";
+    }
+    
+    document.getElementById("valMeterBear").textContent = `$${(bearAvg || 0).toFixed(2)} (${(diff(bearAvg)*100).toFixed(1)}%)`;
+    document.getElementById("valMeterBase").textContent = `$${baseAvg.toFixed(2)} (${(baseUpside*100).toFixed(1)}%)`;
+    document.getElementById("valMeterBull").textContent = `$${(bullAvg || 0).toFixed(2)} (${(diff(bullAvg)*100).toFixed(1)}%)`;
+  } else {
+    document.getElementById("valFairValueRange").textContent = "N/A";
+    const verdictPill = document.getElementById("valVerdictPill");
+    verdictPill.textContent = "AWAITING DATA";
+    verdictPill.style.background = "rgba(255,255,255,0.05)";
+    verdictPill.style.color = "var(--text-muted)";
+  }
+
   document.getElementById("valResults").innerHTML = cards
     .map((c) => {
-      const { fvPE, fvPFCF, fvAvg } = c.data;
+      const { fvPE, fvPFCF, fvDCF, fvAvg } = c.data;
       const dPE = diff(fvPE),
         dPFCF = diff(fvPFCF),
+        dDCF = diff(fvDCF),
         dAvg = diff(fvAvg);
       const mAvg = mos(fvAvg);
       return `<div class="val-card ${c.s}">
       <div class="val-scenario">${c.name}</div>
       <div class="val-price-row">
-        <div class="val-price-label">P/E Method</div>
+        <div class="val-price-label">P/E Method <span title="Value based on future earnings multiples." style="cursor:help; opacity:0.6; font-size:0.8em;">(?)</span></div>
         <div class="val-price mono">${fmt(fvPE, "price")}</div>
         ${dPE !== null ? `<div class="val-diff ${colorCls(dPE)}">${fmt(dPE, "percent")} · ${valTxt(dPE)}</div>` : ""}
       </div>
@@ -1167,6 +1364,12 @@ function renderValuationResults(res, price) {
         <div class="val-price-label">P/FCF Method</div>
         <div class="val-price mono">${fmt(fvPFCF, "price")}</div>
         ${dPFCF !== null ? `<div class="val-diff ${colorCls(dPFCF)}">${fmt(dPFCF, "percent")} · ${valTxt(dPFCF)}</div>` : ""}
+      </div>
+      <hr class="val-divider">
+      <div class="val-price-row">
+        <div class="val-price-label">2-Stage DCF <span title="Value based on long-term free cash flow generation." style="cursor:help; opacity:0.6; font-size:0.8em;">(?)</span></div>
+        <div class="val-price mono">${fmt(fvDCF, "price")}</div>
+        ${dDCF !== null ? `<div class="val-diff ${colorCls(dDCF)}">${fmt(dDCF, "percent")} · ${valTxt(dDCF)}</div>` : ""}
       </div>
       <hr class="val-divider">
       <div class="val-price-row">
@@ -1782,97 +1985,7 @@ async function askAiCopilot(query) {
 window.askAiCopilot = askAiCopilot;
 window.fetchAiNewsSummary = fetchAiNewsSummary;
 
-// -- DCF Calculator --------------------------------
 
-function updateDcfVal(id) {
-  const input = document.getElementById("dcf-" + id);
-  const valSpan = document.getElementById("dcf-" + id + "-val");
-  if (input && valSpan) {
-    valSpan.textContent = parseFloat(input.value).toFixed(1) + "%";
-  }
-}
-window.updateDcfVal = updateDcfVal;
-
-function initDCFCalculator(data) {
-  calculateDCF();
-}
-window.initDCFCalculator = initDCFCalculator;
-
-function calculateDCF() {
-  const data = AppState.stockData;
-  if (!data) return;
-
-  const fcf = data.fcf_ttm || 0;
-  const shares = data.shares_outstanding || 0;
-  const currentPrice = data.price || 0;
-
-  const fcfGrowth =
-    parseFloat(document.getElementById("dcf-st-growth").value) / 100;
-  const termGrowth =
-    parseFloat(document.getElementById("dcf-term-growth").value) / 100;
-  const wacc = parseFloat(document.getElementById("dcf-wacc").value) / 100;
-
-  let fairValue = 0;
-  let pvFcfSum = 0;
-
-  if (fcf > 0 && shares > 0 && wacc > termGrowth) {
-    let projectedFcf = fcf;
-    for (let i = 1; i <= 5; i++) {
-      projectedFcf = projectedFcf * (1 + fcfGrowth);
-      pvFcfSum += projectedFcf / Math.pow(1 + wacc, i);
-    }
-    const terminalValue =
-      (projectedFcf * (1 + termGrowth)) / (wacc - termGrowth);
-    const pvTerminalValue = terminalValue / Math.pow(1 + wacc, 5);
-    const totalEnterpriseValue = pvFcfSum + pvTerminalValue;
-    fairValue = totalEnterpriseValue / shares;
-  }
-
-  const fvEl = document.getElementById("dcf-fair-value");
-  const priceEl = document.getElementById("dcf-current-price");
-  const upsideEl = document.getElementById("dcf-upside");
-  const badgeEl = document.getElementById("dcf-badge");
-
-  if (fvEl)
-    fvEl.textContent = fairValue > 0 ? "$" + fairValue.toFixed(2) : "N/A";
-  if (priceEl) priceEl.textContent = "$" + currentPrice.toFixed(2);
-
-  if (currentPrice > 0 && fairValue > 0) {
-    const upsidePct = ((fairValue - currentPrice) / currentPrice) * 100;
-    if (upsidePct > 0) {
-      if (upsideEl) {
-        upsideEl.textContent = "+" + upsidePct.toFixed(1) + "%";
-        upsideEl.style.color = "var(--success)";
-      }
-      if (badgeEl) {
-        badgeEl.textContent = "Undervalued";
-        badgeEl.style.background = "rgba(34, 197, 94, 0.15)";
-        badgeEl.style.color = "var(--success)";
-      }
-    } else {
-      if (upsideEl) {
-        upsideEl.textContent = upsidePct.toFixed(1) + "%";
-        upsideEl.style.color = "var(--danger)";
-      }
-      if (badgeEl) {
-        badgeEl.textContent = "Overvalued";
-        badgeEl.style.background = "rgba(239, 68, 68, 0.15)";
-        badgeEl.style.color = "var(--danger)";
-      }
-    }
-  } else {
-    if (upsideEl) {
-      upsideEl.textContent = "N/A";
-      upsideEl.style.color = "var(--text-muted)";
-    }
-    if (badgeEl) {
-      badgeEl.textContent = "Need +FCF";
-      badgeEl.style.background = "var(--surface2)";
-      badgeEl.style.color = "var(--text-muted)";
-    }
-  }
-}
-window.calculateDCF = calculateDCF;
 
 // ==========================================
 // Search Autocomplete
@@ -1934,8 +2047,9 @@ if (searchInput) {
 }
 
 window.selectAutocomplete = function (symbol) {
-  searchAutocomplete.style.display = "none";
-  searchInput.value = symbol;
+  const searchAutocomplete = document.getElementById("searchAutocomplete");
+  if (searchAutocomplete) searchAutocomplete.style.display = "none";
+  if (window.els && window.els.searchInput) window.els.searchInput.value = symbol;
   searchTicker(symbol);
 };
 
@@ -2084,6 +2198,49 @@ window.fetchMarketMovers = async function(category = 'gainers') {
   }
 };
 
+window.fetchSectorPerformance = async function() {
+  const container = document.getElementById("homeSectorPerformance");
+  if (!container) return;
+  
+  try {
+    const res = await window.fetchWithRetry("/api/sector_performance");
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    
+    if (data.length === 0) {
+      container.innerHTML = `<div style="color: var(--text-muted); font-size: 0.9rem;">No data available.</div>`;
+      return;
+    }
+    
+    // Find max abs change for progress bar scaling
+    const maxChange = Math.max(...data.map(s => Math.abs(s.change)));
+    
+    container.innerHTML = data.slice(0, 6).map(item => {
+      const isPos = item.change >= 0;
+      const color = isPos ? "var(--success)" : "var(--danger)";
+      const bg = isPos ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
+      const sign = isPos ? "+" : "";
+      const widthPct = maxChange === 0 ? 0 : Math.min(100, (Math.abs(item.change) / maxChange) * 100);
+      
+      return `
+        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.9rem;">
+          <div style="flex: 1;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <strong style="color: var(--text-main);">${item.name}</strong>
+              <span style="color: ${color}; font-weight: 600;">${sign}${item.change.toFixed(2)}%</span>
+            </div>
+            <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden;">
+              <div style="width: ${widthPct}%; height: 100%; background: ${bg}; border-radius: 3px;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (e) {
+    container.innerHTML = `<div style="color: var(--danger); font-size: 0.9rem;">Failed to fetch sector performance.</div>`;
+  }
+};
+
 window.renderHomeWatchlistPreview = async function() {
   const container = document.getElementById("homeWatchlistPreview");
   if (!container) return;
@@ -2139,10 +2296,15 @@ window.renderHomeWatchlistPreview = async function() {
           </div>
           
           <div style="display: flex; align-items: center; gap: 16px;">
-            <span style="font-weight: 500; color: var(--text-main); font-family: var(--font-mono); font-size: 0.95rem;">$${q.price.toFixed(2)}</span>
-            <span style="font-size: 0.8rem; color: ${color}; background: ${bg}; padding: 4px 8px; border-radius: 6px; font-weight: 600; min-width: 65px; text-align: right;">
-              ${sign}${q.changePercent.toFixed(2)}%
-            </span>
+            <svg width="40" height="20" viewBox="0 0 100 30" preserveAspectRatio="none">
+              <polyline points="0,${isUp ? 25 : 5} 25,${isUp ? 15 : 15} 50,${isUp ? 20 : 10} 75,${isUp ? 5 : 25} 100,${isUp ? 2 : 28}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div style="display: flex; flex-direction: column; align-items: flex-end;">
+              <span style="font-weight: 500; color: var(--text-main); font-family: var(--font-mono); font-size: 0.95rem;">$${q.price.toFixed(2)}</span>
+              <span style="font-size: 0.8rem; color: ${color}; font-weight: 600;">
+                ${sign}${q.changePercent.toFixed(2)}%
+              </span>
+            </div>
           </div>
         </div>
       `;

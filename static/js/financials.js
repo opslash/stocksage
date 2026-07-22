@@ -6,6 +6,9 @@ let financialsCharts = {
   cash: null
 };
 
+let currentFinancialsTicker = null;
+let currentFinancialsPeriod = null;
+
 // Global formatting helper for large numbers
 function formatFinNumber(val, isPercent = false) {
   if (val === null || val === undefined || val === 'NaN') return '-';
@@ -37,6 +40,11 @@ async function loadFinancials() {
                  new URLSearchParams(window.location.search).get("ticker") || 
                  localStorage.getItem("last_analyzed_ticker") || 
                  "NVDA";
+                 
+  if (AppState.structuredFinancials && currentFinancialsTicker === symbol && currentFinancialsPeriod === financialsPeriod) {
+     renderFinancials(AppState.structuredFinancials);
+     return;
+  }
   
   // Show skeleton loaders
   document.querySelectorAll('#incomeStatementBody, #balanceSheetBody, #cashFlowBody').forEach(el => {
@@ -47,6 +55,8 @@ async function loadFinancials() {
     const response = await fetch(`/api/stock/financials?ticker=${symbol}&period=${financialsPeriod}`);
     const data = await response.json();
     AppState.structuredFinancials = data;
+    currentFinancialsTicker = symbol;
+    currentFinancialsPeriod = financialsPeriod;
     renderFinancials(data);
   } catch (err) {
     console.error("Failed to load financials:", err);

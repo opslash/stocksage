@@ -21,6 +21,9 @@ class ScreenerAdvancedRequest(BaseModel):
     query: str
     limit: int = 100
 
+class ScreenerAIRequest(BaseModel):
+    query: str
+
 class SavedScreenCreate(BaseModel):
     name: str
     query_string: str
@@ -53,6 +56,19 @@ async def post_screener_advanced(req: ScreenerAdvancedRequest):
         logger.error(f"Advanced Screener API error: {e}")
         return {"data": [], "error": str(e)}
 
+from fastapi import Request
+import ai_service
+
+@router.post("/screener/parse-query")
+async def parse_screener_query(req: ScreenerAIRequest, request: Request):
+    user_keys = {
+        "OPENROUTER_API_KEY": request.headers.get("X-OpenRouter-Key", ""),
+        "GROQ_API_KEY": request.headers.get("X-Groq-Key", ""),
+        "GEMINI_API_KEY": request.headers.get("X-Gemini-Key", "")
+    }
+    result = ai_service.translate_screener_query(req.query, user_keys)
+    return result
+
 from fastapi import Depends
 from sqlalchemy.orm import Session
 from models import get_db, SavedScreen
@@ -68,7 +84,7 @@ async def save_screen(
         new_screen = SavedScreen(
             name=req.name,
             query_string=req.query_string,
-            owner_id=user.id
+            user_id=user.id
         )
         db.add(new_screen)
         db.commit()
@@ -84,7 +100,7 @@ async def get_saved_screens(
     user: dict = Depends(get_current_user)
 ):
     try:
-        screens = db.query(SavedScreen).filter(SavedScreen.owner_id == user.id).order_by(SavedScreen.created_at.desc()).all()
+        screens = db.query(SavedScreen).filter(SavedScreen.user_id == user.id).order_by(SavedScreen.created_at.desc()).all()
         return [{"id": s.id, "name": s.name, "query_string": s.query_string} for s in screens]
     except Exception as e:
         logger.error(f"Error fetching saved screens: {e}")

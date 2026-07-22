@@ -216,3 +216,43 @@ def generate_swot(data: dict, user_keys: dict = None) -> dict:
             "opportunities": ["Verify API keys and quotas"],
             "threats": ["AI generation failed"]
         }
+
+def translate_screener_query(query: str, user_keys: dict = None) -> dict:
+    prompt = f"""
+    Convert the following natural language query into a structured screener syntax.
+    The syntax supports standard SQL-like WHERE clauses using these fields:
+    Market Cap, PE Ratio, Forward PE, PEG Ratio, Price to Book, Dividend Yield, ROE, ROIC, Gross Margin, Net Profit Margin, Revenue Growth, Sector.
+    
+    If the user's input is too vague, irrelevant, or fails parsing, output a reasonable default query (e.g. "Market Cap > 1000000000 AND PE Ratio < 25").
+    
+    Query: "{query}"
+    
+    Output JSON ONLY:
+    {{
+      "generated_query": "YOUR_GENERATED_SYNTAX_HERE",
+      "explanation": "A short 1 sentence explanation of the filters applied."
+    }}
+    """
+    
+    try:
+        response_text = generate_ai_completion(
+            prompt=prompt,
+            system_prompt="You are a data analyst converting plain english into database queries.",
+            json_mode=True,
+            user_keys=user_keys
+        )
+        
+        if not response_text:
+            raise Exception("No response from AI")
+            
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group(0))
+        return json.loads(response_text)
+    except Exception as e:
+        logger.error(f"Error parsing screener query: {e}")
+        # Graceful fallback
+        return {
+            "generated_query": "Market Cap > 1000000000 AND PE Ratio < 20",
+            "explanation": "Could not parse specific criteria. Applied default filter for mid/large cap value stocks."
+        }
