@@ -1,38 +1,77 @@
 import json
+import re
 import logging
-from google import genai
-from google.genai import types
+import os
+import requests
+import google.generativeai as genai
+from groq import Groq
+from config import settings
 
 logger = logging.getLogger(__name__)
 
-from config import settings
+def generate_ai_completion(prompt: str, system_prompt: str = "You are StockSage AI Copilot.", json_mode: bool = False, user_keys: dict = None):
+    user_keys = user_keys or {}
+    
+    # 1. Try OpenRouter Free (Primary)
+    openrouter_key = user_keys.get("OPENROUTER_API_KEY") or settings.OPENROUTER_API_KEY
+    if openrouter_key:
+        try:
+            res = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {openrouter_key}"},
+                json={
+                    "model": "meta-llama/llama-3.1-8b-instruct:free",
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "response_format": {"type": "json_object"} if json_mode else None
+                },
+                timeout=8
+            )
+            res.raise_for_status()
+            return res.json()['choices'][0]['message']['content']
+        except Exception as e:
+            logger.warning(f"OpenRouter failed: {e}")
+            
+    # 2. Try Groq (Fallback 1)
+    groq_key = user_keys.get("GROQ_API_KEY") or settings.GROQ_API_KEY
+    if groq_key:
+        try:
+            client = Groq(api_key=groq_key)
+            res = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}],
+                temperature=0.2,
+                response_format={"type": "json_object"} if json_mode else None
+            )
+            return res.choices[0].message.content
+        except Exception as e:
+            logger.warning(f"Groq failed/rate-limited: {e}")
 
-# Configure Gemini Client
-api_key = settings.GEMINI_API_KEY
-if not api_key:
-    logger.warning(
-        "GEMINI_API_KEY not found in environment. AI features will be disabled or use fallback mode."
-    )
-else:
-    client = genai.Client(api_key=api_key)
+    # 3. Try Google Gemini Flash (Fallback 2)
+    gemini_key = user_keys.get("GEMINI_API_KEY") or settings.GEMINI_API_KEY
+    if gemini_key:
+        try:
+            genai.configure(api_key=gemini_key)
+            model_kwargs = {}
+            if json_mode:
+                model_kwargs["generation_config"] = {"response_mime_type": "application/json"}
+            model = genai.GenerativeModel('gemini-1.5-flash', **model_kwargs)
+            res = model.generate_content(f"{system_prompt}\n\n{prompt}")
+            return res.text
+        except Exception as e:
+            logger.warning(f"Gemini failed/rate-limited: {e}")
 
+    # Return None if no provider succeeded or no keys are configured
+    logger.error("All AI providers failed or no API keys configured.")
+    return None
 
-def summarize_news(articles: list[dict]) -> dict:
+def summarize_news(articles: list[dict], user_keys: dict = None) -> dict:
     """
     Summarize a list of news articles and extract sentiment and takeaways.
     Returns: {"summary": [str, str, str], "sentiment": "Bullish/Bearish/Neutral", "takeaways": [str, str]}
     """
-    if not api_key:
-        return {
-            "summary": [
-                "AI integration is currently disabled (API key missing).",
-                "Please add a valid GEMINI_API_KEY to your environment.",
-                "Standard news view is active.",
-            ],
-            "sentiment": "Neutral",
-            "takeaways": ["API Key Missing"],
-        }
-
     if not articles:
         return {
             "summary": ["No recent news available to summarize."],
@@ -43,57 +82,51 @@ def summarize_news(articles: list[dict]) -> dict:
     try:
         # Prepare context
         context = ""
-        for i, article in enumerate(
-            articles[:10]
-        ):  # Limit to top 10 to fit context window easily
+        for i, article in enumerate(articles[:10]):
             context += f"Headline {i + 1}: {article.get('title', '')}\n"
             context += f"Snippet {i + 1}: {article.get('description', '')}\n\n"
 
-        prompt = f"""
+        system_prompt = """
         You are a seasoned financial analyst. I will provide you with recent news headlines and snippets.
         Analyze them and provide an executive briefing.
         
-        News Data:
-        {context}
-        
         Respond ONLY with a valid JSON object matching this schema:
-        {{
+        {
             "summary": ["bullet point 1", "bullet point 2", "bullet point 3"],
             "sentiment": "Bullish" | "Bearish" | "Neutral",
             "takeaways": ["key theme 1", "key theme 2"]
-        }}
+        }
         """
 
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0.2,
-            ),
+        user_prompt = f"News Data:\n{context}"
+
+        response_text = generate_ai_completion(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            json_mode=True,
+            user_keys=user_keys
         )
 
-        return json.loads(response.text)
+        if not response_text:
+            raise Exception("No AI provider was able to generate a response (Check API keys).")
+
+        return json.loads(response_text)
     except Exception as e:
-        logger.error(f"Error calling Gemini for news summary: {e}")
+        logger.error(f"Error in news summary: {e}")
         return {
             "summary": [
                 "Error generating AI summary.",
                 str(e),
-                "Please check your API key and quotas.",
+                "Please check your API keys and quotas.",
             ],
             "sentiment": "Neutral",
             "takeaways": ["AI Error"],
         }
 
-
-def ask_copilot(ticker: str, query: str, context: dict) -> str:
+def ask_copilot(ticker: str, query: str, context: dict, user_keys: dict = None) -> str:
     """
-    Answer a user's question about a specific stock using Gemini 1.5 Flash.
+    Answer a user's question about a specific stock using AI.
     """
-    if not api_key:
-        return "⚠️ AI Copilot is currently disabled because the GEMINI_API_KEY environment variable is not set."
-
     try:
         sys_prompt = f"""
         You are an expert AI Stock Analyst Copilot for StockSage.
@@ -110,14 +143,76 @@ def ask_copilot(ticker: str, query: str, context: dict) -> str:
         {json.dumps(context, indent=2)}
         """
 
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=user_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=sys_prompt,
-            ),
+        response_text = generate_ai_completion(
+            prompt=user_prompt,
+            system_prompt=sys_prompt,
+            json_mode=False,
+            user_keys=user_keys
         )
-        return response.text
+        
+        if not response_text:
+            return "⚠️ AI Copilot is currently disabled. Please configure your API keys in the settings."
+            
+        return response_text
     except Exception as e:
-        logger.error(f"Error calling Gemini for copilot chat: {e}")
+        logger.error(f"Error calling Copilot chat: {e}")
         return f"⚠️ An error occurred while generating the response: {e}"
+
+def generate_swot(data: dict, user_keys: dict = None) -> dict:
+    # Safely sanitize inputs to prevent JSON prompt injection
+    try:
+        headlines = data.get('recent_headlines')
+        if not headlines or headlines == "None":
+            headlines = "No recent headlines available."
+    except Exception:
+        headlines = "No recent headlines available."
+        
+    prompt = f"""
+    You are a fast API returning a SWOT analysis for {data.get('symbol')}. Be extremely concise (1 short sentence max per bullet) to minimize generation latency.
+    
+    Data:
+    Symbol: {data.get('symbol')}
+    Price: {data.get('price')}
+    PE: {data.get('pe_ratio')}
+    ROIC: {data.get('roic')}
+    RevGrowth: {data.get('revenue_growth')}
+    Debt/Eq: {data.get('debt_to_equity')}
+    Headlines: {headlines}
+    
+    Provide EXACTLY 2 very short bullet points for each quadrant.
+    
+    Output JSON format ONLY:
+    {{
+      "strengths": ["...", "..."],
+      "weaknesses": ["...", "..."],
+      "opportunities": ["...", "..."],
+      "threats": ["...", "..."]
+    }}
+    """
+    
+    try:
+        response_text = generate_ai_completion(
+            prompt=prompt,
+            system_prompt="You are a financial analyst providing a SWOT analysis.",
+            json_mode=True,
+            user_keys=user_keys
+        )
+        
+        if not response_text:
+            raise Exception("No AI provider was able to generate a response (Check API keys).")
+
+        # Extract valid JSON from AI text response
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if json_match:
+            swot_data = json.loads(json_match.group(0))
+            return swot_data
+            
+        return json.loads(response_text)
+    except Exception as e:
+        logger.error(f"Error generating SWOT: {e}")
+        return {
+            "strengths": ["Error fetching SWOT insights"],
+            "weaknesses": [str(e)],
+            "opportunities": ["Verify API keys and quotas"],
+            "threats": ["AI generation failed"]
+        }

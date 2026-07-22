@@ -65,20 +65,20 @@
             </button>
             <button
               class="nav-link"
+              id="nav-financials"
+              onclick="navigateTo('financials')"
+            >
+              Financials
+            </button>
+            <button
+              class="nav-link"
               id="nav-valuation"
               onclick="navigateTo('valuation')"
             >
               Valuation Engine
             </button>
-            <button
-              class="nav-link"
-              id="nav-company-news"
-              onclick="navigateTo('company-news')"
-            >
-              Company News
-            </button>
             <button class="nav-link" id="nav-news" onclick="navigateTo('news')">
-              Macro News
+              News & Sentiment
             </button>
             <a
               href="#screener"
@@ -99,6 +99,7 @@
           style="display: flex; align-items: center; gap: 15px"
         >
           <div id="authContainer">
+
             <button
               id="btnOpenAuth"
               class="btn btn-sm btn-outline"
@@ -122,12 +123,12 @@
                   position: absolute;
                   right: 0;
                   top: 45px;
-                  background: var(--card-bg);
+                  background: var(--bg2);
                   border: 1px solid var(--border-bright);
                   border-radius: 12px;
                   padding: 8px;
                   min-width: 160px;
-                  z-index: 100;
+                  z-index: 1000;
                   box-shadow: 0 10px 25px rgba(0,0,0,0.5);
                   backdrop-filter: blur(10px);
                 "
@@ -136,6 +137,42 @@
                   <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Signed in as</div>
                   <div style="font-weight: 600; font-size: 0.9rem; color: var(--text-main); overflow: hidden; text-overflow: ellipsis;" id="profileNameDisplay">User</div>
                 </div>
+                <a
+                  href="#"
+                  onclick="openSettingsModal(); return false;"
+                  style="
+                    color: var(--text-main);
+                    text-decoration: none;
+                    display: flex;
+                    align-items: center;
+                    padding: 10px 12px;
+                    border-radius: 6px;
+                    transition: background 0.2s;
+                    font-weight: 500;
+                  "
+                  onmouseover="this.style.background='var(--hover-bg)'"
+                  onmouseout="this.style.background='transparent'"
+                >
+                  ⚙️ AI API Keys
+                </a>
+                <a
+                  href="#watchlist"
+                  onclick="navigateTo('watchlist'); toggleProfileMenu(); return false;"
+                  style="
+                    color: var(--text-main);
+                    text-decoration: none;
+                    display: flex;
+                    align-items: center;
+                    padding: 10px 12px;
+                    border-radius: 6px;
+                    transition: background 0.2s;
+                    font-weight: 500;
+                  "
+                  onmouseover="this.style.background='var(--hover-bg)'"
+                  onmouseout="this.style.background='transparent'"
+                >
+                  ⭐ Saved Screens / Watchlist
+                </a>
                 <a
                   href="#"
                   onclick="
@@ -173,6 +210,44 @@
       <div class="container">
         <!-- PAGE: HOME -->
         <div id="page-home" class="page active">
+          
+          <style>
+          .market-ticker-bar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            margin-bottom: 24px;
+            background: var(--surface2);
+            border-bottom: 1px solid var(--border);
+            border-radius: 8px;
+            overflow-x: auto;
+            white-space: nowrap;
+          }
+          .market-ticker-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            font-size: 0.85rem;
+            font-family: var(--font-mono);
+            color: var(--text-main);
+          }
+          .market-ticker-pill .idx-name { font-weight: 600; color: var(--text-muted); font-family: 'Inter', sans-serif; }
+          .market-ticker-pill .idx-price { font-weight: 500; }
+          .market-ticker-pill.pos { border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.05); }
+          .market-ticker-pill.neg { border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.05); }
+          .market-ticker-pill.pos .idx-change { color: var(--success); }
+          .market-ticker-pill.neg .idx-change { color: var(--danger); }
+          </style>
+          <div id="marketIndicesBar" class="market-ticker-bar">
+            <!-- Populated via JS -->
+          </div>
+
           <div class="welcome-state">
             <div class="welcome-icon">📊</div>
             <h1>Stock Analysis, Simplified</h1>
@@ -202,7 +277,7 @@
                   id="searchInput"
                   class="search-input"
                   style="padding: 14px 50px 14px 44px; font-size: 1.05rem"
-                  placeholder="Enter Stock Ticker... e.g., AAPL, NVDA"
+                  placeholder="Search ticker or company name (e.g. AAPL, Microsoft)..."
                   autocomplete="off"
                   autocapitalize="characters"
                   spellcheck="false"
@@ -235,7 +310,7 @@
                     top: 100%;
                     left: 0;
                     right: 0;
-                    background: var(--card-bg);
+                    background: #0f172a;
                     border: 1px solid var(--border-color);
                     border-radius: 6px;
                     margin-top: 4px;
@@ -248,56 +323,102 @@
               </form>
             </div>
 
-            <div class="chips">
-              <div class="chip" onclick="searchTicker('AAPL')">AAPL</div>
-              <div class="chip" onclick="searchTicker('NVDA')">NVDA</div>
-              <div class="chip" onclick="searchTicker('MSFT')">MSFT</div>
-              <div class="chip" onclick="searchTicker('GOOGL')">GOOGL</div>
-              <div class="chip" onclick="searchTicker('TSLA')">TSLA</div>
-              <div class="chip" onclick="searchTicker('META')">META</div>
+
+
+          </div>
+          
+          <!-- Market Movers & Watchlist Widgets -->
+          <div class="dashboard-grid" style="margin-top: 32px;">
+            <!-- Market Movers -->
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h2 class="card-title">🔥 Market Movers</h2>
+                  <div class="card-subtitle">Today's top movers in popular stocks</div>
+                </div>
+              </div>
+              <div style="padding: 16px;">
+                <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                  <button class="btn btn-sm btn-outline active" id="btnMoversGainers" onclick="window.fetchMarketMovers('gainers')">Gainers</button>
+                  <button class="btn btn-sm btn-outline" id="btnMoversLosers" onclick="window.fetchMarketMovers('losers')">Losers</button>
+                  <button class="btn btn-sm btn-outline" id="btnMoversVolume" onclick="window.fetchMarketMovers('volume')">Volume</button>
+                </div>
+                <div id="marketMoversContent" style="display: flex; flex-direction: column; gap: 8px;">
+                  <div class="skeleton-text" style="width: 100%; height: 24px;"></div>
+                  <div class="skeleton-text" style="width: 100%; height: 24px;"></div>
+                  <div class="skeleton-text" style="width: 100%; height: 24px;"></div>
+                </div>
+              </div>
             </div>
 
-            <div class="snapshot-strip" id="marketIndices">
-              <div class="snapshot-card">
-                <div class="snapshot-label">S&amp;P 500</div>
-                <div class="snapshot-val text-muted">Loading...</div>
+            <!-- Watchlist Preview -->
+            <div class="card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                  <h2 class="card-title">⭐ My Watchlist</h2>
+                  <div class="card-subtitle">Quick access to saved tickers</div>
+                </div>
+                <a href="#watchlist" onclick="navigateTo('watchlist'); return false;" style="font-size: 0.85rem; color: var(--primary); text-decoration: none; font-weight: 500; margin-top: 4px;">View All &rarr;</a>
               </div>
-              <div class="snapshot-card">
-                <div class="snapshot-label">NASDAQ</div>
-                <div class="snapshot-val text-muted">Loading...</div>
-              </div>
-              <div class="snapshot-card">
-                <div class="snapshot-label">DOW JONES</div>
-                <div class="snapshot-val text-muted">Loading...</div>
-              </div>
-              <div class="snapshot-card">
-                <div class="snapshot-label">VIX (Vol)</div>
-                <div class="snapshot-val text-muted">Loading...</div>
+              <div id="homeWatchlistPreview" style="padding: 16px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="color: var(--text-muted); font-size: 0.9rem;">Loading watchlist...</div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- PAGE: WATCHLIST -->
+          <!-- PAGE: WATCHLIST -->
         <div id="page-watchlist" class="page">
           <div class="card">
             <div class="card-header">
               <div>
                 <h2 class="card-title">My Watchlist</h2>
                 <div class="card-subtitle">
-                  Live quotes for your saved tickers
+                  Live quotes and metrics for your saved tickers
                 </div>
               </div>
             </div>
-            <div
-              id="watchlistGrid"
-              style="
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-                gap: 16px;
-                padding: 0 16px 16px;
-              "
-            ></div>
+
+            <!-- Summary Strip -->
+            <div id="watchlistSummary" style="display: none; padding: 16px; border-bottom: 1px solid var(--border); display: flex; gap: 24px; font-size: 0.95rem;">
+              <div><strong>Total Tickers:</strong> <span id="wlTotalTickers">0</span></div>
+              <div><strong>Top Gainer:</strong> <span id="wlTopGainer">--</span></div>
+            </div>
+
+            <!-- Data Table -->
+            <div class="table-container" id="watchlistTableContainer" style="display: none;">
+              <table class="data-table" style="width: 100%;">
+                <thead>
+                  <tr>
+                    <th style="text-align: left;">Ticker</th>
+                    <th style="text-align: left;">Company Name</th>
+                    <th style="text-align: right;">Live Price</th>
+                    <th style="text-align: right;">Day Change</th>
+                    <th style="text-align: right;">Market Cap</th>
+                    <th style="text-align: right;">P/E (TTM)</th>
+                    <th style="text-align: center;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="watchlistTableBody">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State -->
+            <div id="watchlistEmptyState" style="display: none; text-align: center; padding: 60px 20px;">
+              <div style="font-size: 3rem; margin-bottom: 16px;">⭐</div>
+              <h3 style="margin-bottom: 8px; color: var(--text-main);">No stocks in your watchlist yet</h3>
+              <p style="color: var(--text-muted); margin-bottom: 24px; max-width: 400px; margin-left: auto; margin-right: auto;">
+                Keep track of your favorite companies by adding them to your watchlist.
+              </p>
+              <button class="btn btn-primary" onclick="navigateTo('screener')">Explore Stock Screener</button>
+            </div>
+            
+            <!-- Loading / Error State -->
+            <div id="watchlistStatusMessage" style="text-align: center; padding: 40px; color: var(--text-muted);">
+              Loading...
+            </div>
           </div>
         </div>
 
@@ -597,10 +718,9 @@
               
               <!-- Chart Type Switcher -->
               <select id="chartTypeSelect" onchange="if(window.chartActions) window.chartActions.setChartType(this.value)" style="background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; outline: none; cursor: pointer; font-family: 'JetBrains Mono', monospace;">
-                <option value="Candlestick">Candles</option>
-                <option value="Line">Line</option>
-                <option value="Area">Area</option>
-                <option value="Bar">Bar</option>
+                <option value="Candlestick">Candlestick (default)</option>
+                <option value="Line">Line Chart</option>
+                <option value="Area">Area / Mountain Chart</option>
               </select>
 
               <!-- Scale Toggle -->
@@ -610,21 +730,15 @@
               <div style="position: relative;">
                 <button onclick="document.getElementById('indicatorMenu').style.display = document.getElementById('indicatorMenu').style.display === 'block' ? 'none' : 'block'" class="btn btn-sm btn-outline" style="padding: 6px 12px;">➕ Indicators</button>
                 <div id="indicatorMenu" class="dropdown-content" style="display: none; position: absolute; top: calc(100% + 5px); left: 0; background: var(--card-bg); border: 1px solid var(--border-bright); border-radius: 8px; padding: 12px; z-index: 100; min-width: 220px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Moving Averages</div>
-                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('sma20', this.checked)"> SMA 20</label>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Overlays</div>
                   <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('sma50', this.checked)" checked> SMA 50</label>
                   <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('sma200', this.checked)" checked> SMA 200</label>
-                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('ema9', this.checked)"> EMA 9</label>
-                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('ema21', this.checked)"> EMA 21</label>
-                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('vwap', this.checked)"> Anchored VWAP</label>
-                  
-                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Volatility</div>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('ema20', this.checked)"> EMA 20</label>
                   <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('bb', this.checked)"> Bollinger Bands</label>
                   
-                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Oscillators</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Oscillators (Bottom Pane)</div>
                   <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('rsi', this.checked)" checked> RSI (14)</label>
-                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('macd', this.checked)"> MACD</label>
-                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('stochrsi', this.checked)"> Stoch RSI</label>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 0.9rem; cursor: pointer;"><input type="checkbox" onchange="if(window.chartActions) window.chartActions.toggleIndicator('macd', this.checked)"> MACD (12, 26, 9)</label>
                 </div>
               </div>
 
@@ -690,6 +804,76 @@
                 </div>
               </div>
               <div class="metrics-grid" id="metricsContainer"></div>
+            </div>
+          </div>
+
+          <!-- AI SWOT Analysis Card -->
+          <div class="card" id="swotCard" style="margin-top: 24px;">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">AI SWOT Analysis</h2>
+                <div class="card-subtitle">Generated by Google Gemini 1.5 Flash</div>
+              </div>
+            </div>
+            
+            <style>
+              .swot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+              @media (max-width: 768px) { .swot-grid { grid-template-columns: 1fr; } }
+              .swot-quadrant { padding: 16px; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border); border-left: 4px solid transparent; }
+              .swot-s { border-left-color: var(--success); }
+              .swot-w { border-left-color: var(--warning); }
+              .swot-o { border-left-color: var(--primary); }
+              .swot-t { border-left-color: var(--danger); }
+              .swot-quadrant h3 { margin-top: 0; margin-bottom: 12px; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; color: var(--text-main); }
+              .swot-list { margin: 0; padding-left: 20px; font-size: 0.9rem; color: var(--text-muted); }
+              .swot-list li { margin-bottom: 6px; }
+              .skeleton-text { height: 12px; background: rgba(255,255,255,0.1); border-radius: 4px; margin-bottom: 8px; animation: pulse 1.5s infinite; }
+              @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+            </style>
+            
+            <div class="swot-grid">
+              <div class="swot-quadrant swot-s">
+                <h3>🟢 Strengths</h3>
+                <ul class="swot-list" id="swot-strengths">
+                  <div class="skeleton-text" style="width: 90%;"></div>
+                  <div class="skeleton-text" style="width: 75%;"></div>
+                </ul>
+              </div>
+              <div class="swot-quadrant swot-w">
+                <h3>🟡 Weaknesses</h3>
+                <ul class="swot-list" id="swot-weaknesses">
+                  <div class="skeleton-text" style="width: 85%;"></div>
+                  <div class="skeleton-text" style="width: 80%;"></div>
+                </ul>
+              </div>
+              <div class="swot-quadrant swot-o">
+                <h3>🔵 Opportunities</h3>
+                <ul class="swot-list" id="swot-opportunities">
+                  <div class="skeleton-text" style="width: 95%;"></div>
+                  <div class="skeleton-text" style="width: 70%;"></div>
+                </ul>
+              </div>
+              <div class="swot-quadrant swot-t">
+                <h3>🔴 Threats</h3>
+                <ul class="swot-list" id="swot-threats">
+                  <div class="skeleton-text" style="width: 80%;"></div>
+                  <div class="skeleton-text" style="width: 85%;"></div>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Company Specific News Widget -->
+          <div class="card" id="companyNewsWidget" style="margin-top: 24px;">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">Recent News & Sentiment</h2>
+                <div class="card-subtitle">Latest headlines for this ticker</div>
+              </div>
+            </div>
+            <div id="companyNewsContainer" style="margin-top: 16px; display: flex; flex-direction: column; gap: 12px;">
+               <!-- Populated via JS -->
+               <div style="color: var(--text-muted); font-size: 0.9rem;">Loading news...</div>
             </div>
           </div>
 
@@ -829,6 +1013,95 @@
                     Send
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PAGE: FINANCIALS -->
+        <div id="page-financials" class="page">
+          <div class="card" style="margin-top: 20px;">
+            <div class="card-header">
+              <h2>Financials</h2>
+            </div>
+            <div class="card-body">
+              <div class="financials-controls" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+                <button class="btn btn-sm btn-outline active" id="btnFinQuarterly" onclick="setFinancialsPeriod('quarterly')">Quarterly</button>
+                <button class="btn btn-sm btn-outline" id="btnFinAnnual" onclick="setFinancialsPeriod('annual')">Annual</button>
+              </div>
+
+              <!-- Accordion for Income Statement, Balance Sheet, Cash Flow -->
+              <div class="accordion" id="financialsAccordion">
+                
+                <!-- Income Statement -->
+                <div class="accordion-item" style="border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px;">
+                  <button class="accordion-header" style="width: 100%; text-align: left; background: var(--bg2); padding: 15px; border: none; font-weight: 600; font-size: 1.1rem; cursor: pointer; color: var(--text-main); display: flex; justify-content: space-between; border-radius: 8px;" onclick="toggleAccordion('fin-income-content', this)">
+                    Income Statement
+                    <span class="icon">▼</span>
+                  </button>
+                  <div class="accordion-content" id="fin-income-content" style="padding: 20px; display: block;">
+                    <div style="height: 300px; margin-bottom: 20px;">
+                      <canvas id="incomeStatementChart"></canvas>
+                    </div>
+                    <div style="overflow-x: auto;">
+                      <table class="data-table" style="width: 100%;">
+                        <thead id="incomeStatementHeaderRow">
+                          <!-- Populated via JS -->
+                        </thead>
+                        <tbody id="incomeStatementBody">
+                          <!-- Populated via JS -->
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Balance Sheet -->
+                <div class="accordion-item" style="border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px;">
+                  <button class="accordion-header" style="width: 100%; text-align: left; background: var(--bg2); padding: 15px; border: none; font-weight: 600; font-size: 1.1rem; cursor: pointer; color: var(--text-main); display: flex; justify-content: space-between; border-radius: 8px;" onclick="toggleAccordion('fin-balance-content', this)">
+                    Balance Sheet
+                    <span class="icon">▶</span>
+                  </button>
+                  <div class="accordion-content" id="fin-balance-content" style="padding: 20px; display: none;">
+                    <div style="height: 300px; margin-bottom: 20px;">
+                      <canvas id="balanceSheetChart"></canvas>
+                    </div>
+                    <div style="overflow-x: auto;">
+                      <table class="data-table" style="width: 100%;">
+                        <thead id="balanceSheetHeaderRow">
+                          <!-- Populated via JS -->
+                        </thead>
+                        <tbody id="balanceSheetBody">
+                          <!-- Populated via JS -->
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Cash Flow -->
+                <div class="accordion-item" style="border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px;">
+                  <button class="accordion-header" style="width: 100%; text-align: left; background: var(--bg2); padding: 15px; border: none; font-weight: 600; font-size: 1.1rem; cursor: pointer; color: var(--text-main); display: flex; justify-content: space-between; border-radius: 8px;" onclick="toggleAccordion('fin-cash-content', this)">
+                    Cash Flow
+                    <span class="icon">▶</span>
+                  </button>
+                  <div class="accordion-content" id="fin-cash-content" style="padding: 20px; display: none;">
+                    <div style="height: 300px; margin-bottom: 20px;">
+                      <canvas id="cashFlowChart"></canvas>
+                    </div>
+                    <div style="overflow-x: auto;">
+                      <table class="data-table" style="width: 100%;">
+                        <thead id="cashFlowHeaderRow">
+                          <!-- Populated via JS -->
+                        </thead>
+                        <tbody id="cashFlowBody">
+                          <!-- Populated via JS -->
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>
@@ -1441,6 +1714,34 @@
       </div>
     </div>
 
+    <!-- API Settings Modal -->
+    <div id="settingsModal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+          <h3>⚙️ API Settings</h3>
+          <button class="close-btn" onclick="closeSettingsModal()">×</button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">
+            Configure your API keys for the Multi-Model AI Manager. StockSage uses Groq (fastest) as primary, Gemini as fallback 1, and OpenRouter as fallback 2.
+          </p>
+          <div style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Groq API Key (Primary)</label>
+            <input type="password" id="inputGroqKey" class="search-input" style="width: 100%; border: 1px solid var(--border);" placeholder="gsk_..." />
+          </div>
+          <div style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Gemini API Key (Fallback 1)</label>
+            <input type="password" id="inputGeminiKey" class="search-input" style="width: 100%; border: 1px solid var(--border);" placeholder="AIza..." />
+          </div>
+          <div style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: 500;">OpenRouter API Key (Fallback 2)</label>
+            <input type="password" id="inputOpenRouterKey" class="search-input" style="width: 100%; border: 1px solid var(--border);" placeholder="sk-or-v1-..." />
+          </div>
+          <button class="btn btn-primary" style="width: 100%; justify-content: center; margin-top: 10px;" onclick="saveSettings()">Save API Keys</button>
+        </div>
+      </div>
+    </div>
+
     <!-- JS Modules — load order matters: utilities first, app last -->
     <script src="static/js/formatters.js"></script>
     <script src="static/js/chart_engine.js?v=4"></script>
@@ -1449,5 +1750,6 @@
     <script src="static/js/auth.js"></script>
     <script src="static/js/screener.js"></script>
     <script src="static/js/app.js?v=4"></script>
+    <script src="static/js/financials.js"></script>
   </body>
 </html>

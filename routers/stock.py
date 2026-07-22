@@ -10,11 +10,29 @@ from stock_service import (
     flatten_response,
     fetch_chart_data,
     fetch_peer_comparison,
+    fetch_structured_financials
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
+@router.get("/stock/financials")
+async def get_financials(ticker: str):
+    ticker_input = ticker
+    symbol = resolve_ticker(ticker_input)
+    
+    cache_key = f"structured_financials_{symbol}"
+    cached = load_cache(cache_key, max_age_minutes=1440)
+    if cached:
+        return cached
+        
+    try:
+        data = fetch_structured_financials(symbol)
+        save_cache(cache_key, data, ttl_seconds=86400)
+        return data
+    except Exception as e:
+        logger.error(f"Error fetching structured financials for {symbol}: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @router.get("/stock/{ticker}")
 async def get_quote(ticker: str):
@@ -122,9 +140,14 @@ async def get_peers(ticker: str):
 
 @router.get("/search")
 async def search_ticker(q: str):
+    cache_key = f"search_{q.lower()}"
+    cached = load_cache(cache_key, max_age_minutes=1440)
+    if cached:
+        return cached
+
     try:
         results = yf.Search(q, max_results=5).quotes
-        return [
+        data = [
             {
                 "symbol": r.get("symbol"),
                 "name": r.get("shortname") or r.get("longname"),
@@ -133,6 +156,8 @@ async def search_ticker(q: str):
             for r in results
             if r.get("quoteType") in ["EQUITY", "ETF"]
         ]
+        save_cache(cache_key, data, ttl_seconds=86400)
+        return data
     except Exception as e:
         logger.error(f"Search failed: {e}")
         return []

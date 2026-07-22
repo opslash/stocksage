@@ -1,7 +1,4 @@
-import os
-import sys
 import logging
-from dotenv import load_dotenv
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -11,20 +8,25 @@ from urllib3.util.retry import Retry
 # ---------------------------------------------------------------------------
 from pydantic_settings import BaseSettings
 
+
 class Settings(BaseSettings):
     PORT: int = 8000
     DATABASE_URL: str = "sqlite:///./app.db"
     REDIS_URL: str = ""
     JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
+    OPENROUTER_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
     GNEWS_API_KEY: str = ""
     CORS_ORIGINS: str = "*"
 
     class Config:
         env_file = ".env"
 
+
 settings = Settings()
 GNEWS_API_KEY = settings.GNEWS_API_KEY
+
 
 def validate_config():
     """
@@ -34,10 +36,18 @@ def validate_config():
     """
     logger.info("Validating startup configuration...")
     if not settings.GNEWS_API_KEY:
-        logger.warning("GNEWS_API_KEY not found in environment. Macro news features will be unavailable or use fallback mode.")
-    if not settings.JWT_SECRET_KEY or settings.JWT_SECRET_KEY == "your-secret-key-change-in-production":
-        logger.warning("Using default JWT_SECRET_KEY. Please change this in production.")
+        logger.warning(
+            "GNEWS_API_KEY not found in environment. Macro news features will be unavailable or use fallback mode."
+        )
+    if (
+        not settings.JWT_SECRET_KEY
+        or settings.JWT_SECRET_KEY == "your-secret-key-change-in-production"
+    ):
+        logger.warning(
+            "Using default JWT_SECRET_KEY. Please change this in production."
+        )
     logger.info("Configuration validated successfully.")
+
 
 # ---------------------------------------------------------------------------
 # Valuation Constants (M-4)
@@ -55,8 +65,7 @@ VALUATION_CONFIG = {
 # Logging setup
 # ---------------------------------------------------------------------------
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("stocksage")
 

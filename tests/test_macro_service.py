@@ -16,7 +16,9 @@ class FakeSession:
         series = url.split("id=")[1]
         if series == "CPIAUCSL":
             dates = pd.date_range("2025-06-01", periods=13, freq="MS")
-            rows = "\n".join(f"{date.date()},{300 + index}" for index, date in enumerate(dates))
+            rows = "\n".join(
+                f"{date.date()},{300 + index}" for index, date in enumerate(dates)
+            )
             return FakeResponse("DATE,CPIAUCSL\n" + rows + "\n")
         values = {
             "FEDFUNDS": "DATE,FEDFUNDS\n2026-05-01,4.25\n2026-06-01,4.00\n",

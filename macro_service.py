@@ -13,10 +13,30 @@ from config import logger
 
 FRED_GRAPH_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
 INDICATORS = {
-    "fed_funds_rate": {"series": "FEDFUNDS", "label": "Fed Funds Rate", "unit": "%", "frequency": "monthly"},
-    "cpi": {"series": "CPIAUCSL", "label": "Consumer Price Index", "unit": "index", "frequency": "monthly"},
-    "unemployment": {"series": "UNRATE", "label": "Unemployment Rate", "unit": "%", "frequency": "monthly"},
-    "gdp": {"series": "GDP", "label": "Gross Domestic Product", "unit": "billions USD", "frequency": "quarterly"},
+    "fed_funds_rate": {
+        "series": "FEDFUNDS",
+        "label": "Fed Funds Rate",
+        "unit": "%",
+        "frequency": "monthly",
+    },
+    "cpi": {
+        "series": "CPIAUCSL",
+        "label": "Consumer Price Index",
+        "unit": "index",
+        "frequency": "monthly",
+    },
+    "unemployment": {
+        "series": "UNRATE",
+        "label": "Unemployment Rate",
+        "unit": "%",
+        "frequency": "monthly",
+    },
+    "gdp": {
+        "series": "GDP",
+        "label": "Gross Domestic Product",
+        "unit": "billions USD",
+        "frequency": "quarterly",
+    },
 }
 
 
@@ -57,11 +77,16 @@ def _format_indicator(key: str, frame: pd.DataFrame) -> Optional[Dict[str, Any]]
         if baseline and baseline > 0:
             yoy = (value / baseline - 1) * 100
     return {
-        "label": spec["label"], "series": series, "value": value,
-        "unit": spec["unit"], "frequency": spec["frequency"],
+        "label": spec["label"],
+        "series": series,
+        "value": value,
+        "unit": spec["unit"],
+        "frequency": spec["frequency"],
         "date": pd.Timestamp(latest["DATE"]).date().isoformat(),
-        "change": change, "yoy_percent": yoy,
-        "source": "FRED", "source_url": f"https://fred.stlouisfed.org/series/{series}",
+        "change": change,
+        "yoy_percent": yoy,
+        "source": "FRED",
+        "source_url": f"https://fred.stlouisfed.org/series/{series}",
     }
 
 
@@ -84,7 +109,11 @@ def fetch_macro_indicators(session: requests.Session = requests) -> Dict[str, An
             logger.warning("Macro indicator %s unavailable: %s", key, exc)
             errors[key] = "Provider unavailable"
 
-    status = "ok" if len(indicators) == len(INDICATORS) else ("partial" if indicators else "unavailable")
+    status = (
+        "ok"
+        if len(indicators) == len(INDICATORS)
+        else ("partial" if indicators else "unavailable")
+    )
     return {
         "status": status,
         "indicators": indicators,

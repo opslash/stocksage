@@ -18,7 +18,11 @@ def _number(value: Any) -> Optional[float]:
         parsed = float(value)
     except (TypeError, ValueError):
         return None
-    return parsed if pd.notna(parsed) and parsed not in (float("inf"), float("-inf")) else None
+    return (
+        parsed
+        if pd.notna(parsed) and parsed not in (float("inf"), float("-inf"))
+        else None
+    )
 
 
 def _extreme(frame: pd.DataFrame, column: str, operation: str) -> Optional[float]:
@@ -39,10 +43,15 @@ def get_price_statistics(history: pd.DataFrame) -> Dict[str, Any]:
     young IPOs with less than a year of history.
     """
     empty = {
-        "week52High": None, "week52Low": None,
-        "ath": None, "atl": None,
-        "ytdHigh": None, "ytdLow": None,
-        "as_of": None, "adjusted": True, "version": 2,
+        "week52High": None,
+        "week52Low": None,
+        "ath": None,
+        "atl": None,
+        "ytdHigh": None,
+        "ytdLow": None,
+        "as_of": None,
+        "adjusted": True,
+        "version": 2,
     }
     if history is None or history.empty:
         return empty

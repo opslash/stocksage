@@ -12,11 +12,13 @@ aiofiles==23.2.1
 httpx==0.28.1
 python-multipart==0.0.32
 tradingview-screener==2.5.0
-google-genai
+openai
 SQLAlchemy==2.0.31
 PyJWT==2.8.0
 passlib[bcrypt]==1.7.4
 
 pydantic-settings
 redis
+google-generativeai
+groq
 gunicorn

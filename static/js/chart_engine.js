@@ -160,7 +160,7 @@
       sma50: { visible: true, series: null, color: "#2196F3", title: "SMA 50" },
       sma200: { visible: true, series: null, color: "#FF9800", title: "SMA 200" },
       ema9: { visible: false, series: null, color: "#00BCD4", title: "EMA 9" },
-      ema21: { visible: false, series: null, color: "#8BC34A", title: "EMA 21" },
+      ema20: { visible: false, series: null, color: "#8BC34A", title: "EMA 20" },
       vwap: { visible: false, series: null, color: "#FFC107", title: "VWAP" },
       bb: {
         visible: false,
@@ -297,27 +297,27 @@
         dateStr = `${yyyy}-${mm}-${dd}`;
       }
       
-      hudDate.innerHTML = `Date: ${dateStr}`;
-      hudDate.style.color = "#e2e8f0";
+      let hudString = `Date: ${dateStr}`;
 
       const mainData = param.seriesData.get(STATE.mainSeries);
       if (mainData) {
         if (mainData.open !== undefined) {
-          hudOHLC.style.display = "flex";
-          hudOHLC.style.flexWrap = "wrap";
-          hudOHLC.style.gap = "8px";
-          hudOHLC.innerHTML = `<span>O: <span style="color:#2196F3">${mainData.open.toFixed(2)}</span></span> <span>H: <span style="color:#4CAF50">${mainData.high.toFixed(2)}</span></span> <span>L: <span style="color:#F44336">${mainData.low.toFixed(2)}</span></span> <span>C: <span style="color:#FF9800">${mainData.close.toFixed(2)}</span></span>`;
+          hudString += ` | O: <span style="color:#2196F3">$${mainData.open.toFixed(2)}</span> | H: <span style="color:#4CAF50">$${mainData.high.toFixed(2)}</span> | L: <span style="color:#F44336">$${mainData.low.toFixed(2)}</span> | C: <span style="color:#FF9800">$${mainData.close.toFixed(2)}</span>`;
         } else if (mainData.value !== undefined) {
-          hudOHLC.style.display = "block";
-          hudOHLC.innerHTML = `C: <span style="color:#FF9800">${mainData.value.toFixed(2)}</span>`;
+          hudString += ` | C: <span style="color:#FF9800">$${mainData.value.toFixed(2)}</span>`;
         }
       }
 
       const volData = param.seriesData.get(STATE.volumeSeries);
       if (volData && volData.value !== undefined) {
-        hudVol.style.display = "block";
-        hudVol.innerHTML = `Vol: ${(volData.value / 1000000).toFixed(2)}M`;
+        hudString += ` | Vol: ${(volData.value / 1000000).toFixed(2)}M`;
       }
+
+      hudDate.innerHTML = hudString;
+      hudDate.style.color = "#e2e8f0";
+      
+      if(hudOHLC) hudOHLC.style.display = "none";
+      if(hudVol) hudVol.style.display = "none";
 
       // Build indicators HUD
       let indHtml = "";
@@ -504,17 +504,17 @@
       STATE.indicators.ema9.series.setData(data);
     }
 
-    // EMA 21
-    safeRemove("ema21");
-    if (STATE.indicators.ema21.visible) {
-      const data = TA.ema(d, 21);
-      STATE.indicators.ema21.series = STATE.chart.addLineSeries({
-        color: STATE.indicators.ema21.color,
+    // EMA 20
+    safeRemove("ema20");
+    if (STATE.indicators.ema20.visible) {
+      const data = TA.ema(d, 20);
+      STATE.indicators.ema20.series = STATE.chart.addLineSeries({
+        color: STATE.indicators.ema20.color,
         lineWidth: 2,
-        title: "EMA 21",
+        title: "EMA 20",
         crosshairMarkerVisible: false,
       });
-      STATE.indicators.ema21.series.setData(data);
+      STATE.indicators.ema20.series.setData(data);
     }
 
     // VWAP
